@@ -1,0 +1,82 @@
+{
+  "api": "https://veruscite.com/api/v1",
+  "jobs": [
+    {
+      "batch": 0,
+      "file": "data/batches/part_00.bib",
+      "document_id": 1710,
+      "share_url": "https://veruscite.com/share/tHvO6qZrYrSZ42WTquiLMzHzUcpiOeAVraips9P8etw",
+      "saved_results": "results/api/part_00.json"
+    },
+    {
+      "batch": 1,
+      "file": "data/batches/part_01.bib",
+      "document_id": 1711,
+      "share_url": "https://veruscite.com/share/7r6g5IKIs7aUS8s8oSnFH6HuCvbH-usBsoP5aPmncEg",
+      "saved_results": "results/api/part_01.json"
+    },
+    {
+      "batch": 2,
+      "file": "data/batches/part_02.bib",
+      "document_id": 1712,
+      "share_url": "https://veruscite.com/share/l2Jj_j3Z3wSGCyi2wtuDl-HA_S0DLEJRLkYvjPNQzew",
+      "saved_results": "results/api/part_02.json"
+    },
+    {
+      "batch": 3,
+      "file": "data/batches/part_03.bib",
+      "document_id": 1713,
+      "share_url": "https://veruscite.com/share/AmhnS-Sy5zVsBYBBbT4s4Gc6mxHHwcAO6yWXxNu0hl4",
+      "saved_results": "results/api/part_03.json"
+    },
+    {
+      "batch": 4,
+      "file": "data/batches/part_04.bib",
+      "document_id": 1714,
+      "share_url": "https://veruscite.com/share/chgxR5WUOlysBCyCkizJkGukKS6zb4cMApQK4Hv6ghE",
+      "saved_results": "results/api/part_04.json"
+    },
+    {
+      "batch": 5,
+      "file": "data/batches/part_05.bib",
+      "document_id": 1715,
+      "share_url": "https://veruscite.com/share/5Dluo6vK-LJqeoOoEqqQ02GNTjOg-uETueJASn4Utj0",
+      "saved_results": "results/api/part_05.json"
+    },
+    {
+      "batch": 6,
+      "file": "data/batches/part_06.bib",
+      "document_id": 1716,
+      "share_url": "https://veruscite.com/share/lgZAhbaGleqLI0NQ70R5lnE7A-Sb2-yr48lZ13hWiks",
+      "saved_results": "results/api/part_06.json"
+    },
+    {
+      "batch": 7,
+      "file": "data/batches/part_07.bib",
+      "document_id": 1717,
+      "share_url": "https://veruscite.com/share/zzBAlPHCd6bpNLOpQt6FgJFG2RnSzkQiNDWYtNDT3iA",
+      "saved_results": "results/api/part_07.json"
+    },
+    {
+      "batch": 8,
+      "file": "data/batches/part_08.bib",
+      "document_id": 1718,
+      "share_url": "https://veruscite.com/share/RQqMjOfVNLaVQhdTBKW8SW8DOKq5U1CYnDDyrs3JJ1A",
+      "saved_results": "results/api/part_08.json"
+    },
+    {
+      "batch": 9,
+      "file": "data/batches/part_09.bib",
+      "document_id": 1719,
+      "share_url": "https://veruscite.com/share/ybeaKu2sx0iAjQaEXTxsX6-uNUqKQfZujlN-Q47tB2c",
+      "saved_results": "results/api/part_09.json"
+    },
+    {
+      "batch": 10,
+      "file": "data/batches/part_10.bib",
+      "document_id": 1720,
+      "share_url": "https://veruscite.com/share/TP7OTvFjVI-jnDFV9NJRHYCN7V0XIv8t81luR-E60K0",
+      "saved_results": "results/api/part_10.json"
+    }
+  ]
+}

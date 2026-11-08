@@ -87,6 +87,7 @@ SPLIT_LABELS = {
     "test_public": "Test",
     "dev_test": "Dev and test",
     "stress_test": "Stress",
+    "all": "All public",
 }
 
 
@@ -117,6 +118,9 @@ def scored(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def subset(df: pd.DataFrame, split: str) -> pd.DataFrame:
+    """`all` is the whole public release. Dev and test are not a fit split here."""
+    if split == "all":
+        return df.copy()
     if split == "dev_test":
         return df[df["split"].isin(["dev_public", "test_public"])].copy()
     return df[df["split"] == split].copy()
@@ -177,7 +181,7 @@ def auc_for(df: pd.DataFrame, split: str, *, fine: bool = True) -> float:
     return float(roc_auc_score(y, scores))
 
 
-def roc_for(df: pd.DataFrame, split: str = "dev_test") -> dict:
+def roc_for(df: pd.DataFrame, split: str = "all") -> dict:
     sub = scored(subset(df, split))
     y = sub["label"].eq("HALLUCINATED").astype(int).to_numpy()
     scores = [
@@ -204,7 +208,7 @@ def crosstab_counts(df: pd.DataFrame, split: str) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def type_table(df: pd.DataFrame, split: str = "dev_test") -> pd.DataFrame:
+def type_table(df: pd.DataFrame, split: str = "all") -> pd.DataFrame:
     sub = scored(subset(df, split))
     sub = sub[sub["label"].eq("HALLUCINATED")]
     rows = []

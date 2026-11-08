@@ -15,7 +15,8 @@ share a title and author list are in different files, and each file has at
 most 300 entries. A 25-entry probe of this bibliography finished in 76
 seconds, and the worker stops a document at 20 minutes, so the 1,661-entry
 collision set would not finish as one file. `data/hallmark_public.bib` is the
-combined file. The numbers in the paper come from the eleven uploads.
+combined file. The numbers in the paper come from the eleven uploads, scored as one set.
+Hallmark's dev and test files are not a train and test split for this check.
 
 The paper is `paper.pdf` (also `paper.md`), from `paper.qmd` and
 `references.bib`.

@@ -7,5 +7,6 @@ results/watch_state.json
 results/watch.log
 results/submit.log
 results/submit-run.log
+results/*.tmp
 data/probe.bib
 results/probe_id.txt

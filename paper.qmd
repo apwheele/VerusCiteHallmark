@@ -3,8 +3,8 @@ title: "VerusCite on the Hallmark benchmark"
 author: "Andrew P. Wheeler"
 abstract: |
   Hallmark is a benchmark of BibTeX entries labeled valid or hallucinated,
-  with a type on each hallucinated entry. I ran its public dev, test, and
-  stress splits through the VerusCite API. VerusCite marks each citation
+  with a type on each hallucinated entry. I ran the public entries through
+  the VerusCite API and scored them as one set. VerusCite marks each citation
   verified, a minor error, not found, or a hallucination. I cross-tabulate
   those labels with Hallmark's, then report recall and the false positive
   rate at three thresholds, and the area under the ROC curve for a score
@@ -65,13 +65,9 @@ com = lambda v: "--" if pd.isna(v) else f"{int(round(v)):,}"
 df = R.load_joined()
 labels = R.load_labels()
 source = R.load_source()
-_hall_main = labels[
-    (labels["label"] == "HALLUCINATED") & labels["split"].isin(["dev_public", "test_public"])
-]
+_hall_main = labels[labels["label"] == "HALLUCINATED"]
 REAL_PAPER_SHARE = float(_hall_main["hallucination_type"].isin(R.REAL_PAPER_TYPES).mean())
 DUP = R.duplicate_summary(labels)
-SCORED = R.scored(df)
-MAIN = R.subset(SCORED, "dev_test")
 
 STATUS_COLORS = {
     "Verified": "#1baf7a",
@@ -91,23 +87,23 @@ def cell(split, hallmark, status):
 
 
 def type_rate(name, status):
-    table = R.type_table(df, "dev_test")
+    table = R.type_table(df, "all")
     row = table.loc[table.Type == name].iloc[0]
     return row[status] / row["n"]
 
 
 def type_n(name):
-    table = R.type_table(df, "dev_test")
+    table = R.type_table(df, "all")
     return int(table.loc[table.Type == name, "n"].iloc[0])
 ```
 
 # Introduction
 
-Hallmark is a benchmark for tools that check whether a bibliographic entry is real [@kim2026hallmark; @hallmarkrepo]. The release I use is version `{python} source["version"]`, commit `{python} source["commit"][:7]`. Three splits are in the public data: dev, test, and stress. Together they are `{python} com(len(labels))` BibTeX entries. The hidden test split is not released with them. I left out the cross-domain split and the ChatGPT supplement, which Hallmark scores separately from the main table.
+Hallmark is a benchmark for tools that check whether a bibliographic entry is real [@kim2026hallmark; @hallmarkrepo]. The release I use is version `{python} source["version"]`, commit `{python} source["commit"][:7]`. The public files are dev, test, and stress, `{python} com(len(labels))` BibTeX entries in total. I score them as one set. VerusCite was not trained on the dev file, so holding that file out does not change the check. The hidden test file is not in the public release. I left out the cross-domain file and the ChatGPT supplement, which Hallmark scores separately from the main table.
 
 Hallmark labels each entry valid or hallucinated, and it gives each hallucinated entry one of 14 types. The types run from a DOI that does not resolve, through a real paper cited at the wrong venue, to a fully invented reference. VerusCite is the checker I run at [veruscite.com](https://veruscite.com) [@veruscite]. It looks the citation up and assigns one of four labels. Verified means a matching source was found and the metadata agrees. A minor error means the same work was found, with a small difference in the year, the author list, or the wording of the title or the venue. Not found means the search did not turn up a matching publication. Hallucination means the citation looks fabricated, or it mixes pieces of different real sources.
 
-The two positive classes are different questions. Hallmark counts a real paper with the wrong venue, a preprint cited as the published version, a shortened author list, and an arXiv record with the venue and year mixed together as hallucinations. Those four types are `{python} pct(REAL_PAPER_SHARE)` of the hallucinated entries on the dev and test splits, and Hallmark's own paper shows that verifier rankings move when they are taken out of the positive class. VerusCite is built to call a real paper with a small metadata difference a minor error. I also expect some invented entries to come back as not found, because the search missed them, and that label is separate from hallucination. Recall of the hallucination label will be lower for both reasons.
+The two positive classes are different questions. Hallmark counts a real paper with the wrong venue, a preprint cited as the published version, a shortened author list, and an arXiv record with the venue and year mixed together as hallucinations. Those four types are `{python} pct(REAL_PAPER_SHARE)` of the hallucinated entries, and Hallmark's own paper shows that verifier rankings move when they are taken out of the positive class. VerusCite is built to call a real paper with a small metadata difference a minor error. I also expect some invented entries to come back as not found, because the search missed them, and that label is separate from hallucination. Recall of the hallucination label will be lower for both reasons.
 
 # What was checked
 
@@ -126,52 +122,45 @@ print("| --- | ---: | --- |")
 for job in jobs:
     n = int((labels.batch == job["batch"]).sum())
     url = job.get("share_url") or ""
-    print(f"| {job['batch'] + 1} | {n:,} | {url} |")
+    link = f"[report]({url})" if url else ""
+    print(f"| {job['batch'] + 1} | {n:,} | {link} |")
 print()
 print(": VerusCite reports for the collision-free uploads. The combined BibTeX file is `data/hallmark_public.bib`.")
 ```
 
 `scripts/02_submit.py` uploads those batches, polls until they finish, writes a public link for each, and joins the results to the labels. Passing `--combined` uploads the single file instead. That run marks the copies as duplicates, so I do not use it for the numbers below. VerusCite bills one credit per 100 citations in a document, rounded up. These uploads are `{python} com(len(labels))` citations and `{python} com(source["credits"])` credits.
 
-The dev and test splits are the comparison set: `{python} com(M("dev_test", "hallucination", "n_pos"))` hallucinated entries and `{python} com(M("dev_test", "hallucination", "n_neg"))` valid ones. The stress split has `{python} com(M("stress_test", "hallucination", "n_pos"))` hallucinated entries and `{python} com(M("stress_test", "hallucination", "n_neg"))` valid entry, which Hallmark includes as a canary, so I report its recall and do not compare its false positive rate with the other splits. Every entry in the joined file has one of the four labels. There are `{python} com(int((df.vc_status == "duplicate").sum()))` duplicates in the saved results.
+The scored set is the full public release: `{python} com(M("all", "hallucination", "n_pos"))` hallucinated entries and `{python} com(M("all", "hallucination", "n_neg"))` valid ones. Every entry in the joined file has one of the four labels. There are `{python} com(int((df.vc_status == "duplicate").sum()))` duplicates in the saved results.
 
 # Crosstab
 
-@tbl-cross is VerusCite's label against Hallmark's, for the dev and test splits separately and together.
+@tbl-cross is VerusCite's label against Hallmark's, for every public entry.
 
 ```{python}
 #| label: tbl-cross
 #| output: asis
-rows = []
-for split in ["dev_public", "test_public", "dev_test"]:
-    table = R.crosstab_counts(df, split)
-    for _, rec in table.iterrows():
-        rows.append({
-            "Split": R.SPLIT_LABELS[split],
-            "Hallmark": rec["Hallmark"],
-            "n": f"{int(rec['n']):,}",
-            "Verified": f"{int(rec['Verified']):,}",
-            "Minor error": f"{int(rec['Minor error']):,}",
-            "Not found": f"{int(rec['Not found']):,}",
-            "Hallucination": f"{int(rec['Hallucination']):,}",
-        })
-print(pd.DataFrame(rows).to_markdown(index=False))
+table = R.crosstab_counts(df, "all")
+show = table.copy()
+show["n"] = show["n"].map(lambda v: f"{int(v):,}")
+for col in ["Verified", "Minor error", "Not found", "Hallucination"]:
+    show[col] = show[col].map(lambda v: f"{int(v):,}")
+print(show.to_markdown(index=False))
 print()
 print(": VerusCite labels against Hallmark's valid and hallucinated labels. Counts are entries.")
 ```
 
-On the dev and test splits together, `{python} com(cell("dev_test", "Valid", "Verified"))` of the `{python} com(cell("dev_test", "Valid", "Verified") + cell("dev_test", "Valid", "Minor error") + cell("dev_test", "Valid", "Not found") + cell("dev_test", "Valid", "Hallucination"))` valid entries are verified. The false calls on valid entries are `{python} com(cell("dev_test", "Valid", "Minor error"))` minor errors, `{python} com(cell("dev_test", "Valid", "Not found"))` not found, and `{python} com(cell("dev_test", "Valid", "Hallucination"))` hallucinations.
+`{python} com(cell("all", "Valid", "Verified"))` of the `{python} com(cell("all", "Valid", "Verified") + cell("all", "Valid", "Minor error") + cell("all", "Valid", "Not found") + cell("all", "Valid", "Hallucination"))` valid entries are verified. The false calls on valid entries are `{python} com(cell("all", "Valid", "Minor error"))` minor errors, `{python} com(cell("all", "Valid", "Not found"))` not found, and `{python} com(cell("all", "Valid", "Hallucination"))` called a hallucination.
 
-Of the hallucinated entries, `{python} com(cell("dev_test", "Hallucinated", "Hallucination"))` are hallucinations, `{python} com(cell("dev_test", "Hallucinated", "Not found"))` are not found, `{python} com(cell("dev_test", "Hallucinated", "Minor error"))` are minor errors, and `{python} com(cell("dev_test", "Hallucinated", "Verified"))` are verified. The verified hallucinated entries are the ones VerusCite accepted. The minor errors are mostly the real papers Hallmark still calls hallucinations. The not found row is the miss the hallucination label does not get credit for.
+Of the hallucinated entries, `{python} com(cell("all", "Hallucinated", "Hallucination"))` are hallucinations, `{python} com(cell("all", "Hallucinated", "Not found"))` are not found, `{python} com(cell("all", "Hallucinated", "Minor error"))` are minor errors, and `{python} com(cell("all", "Hallucinated", "Verified"))` are verified. The verified hallucinated entries are the ones VerusCite accepted. The minor errors are mostly the real papers Hallmark still calls hallucinations. The not found row is the miss the hallucination label does not get credit for.
 
-@fig-types and @tbl-types break the hallucinated class out by type, again on dev and test together. The types are in Hallmark's order, tier 1 then tier 2 then tier 3.
+@fig-types and @tbl-types break the hallucinated class out by type. The types are in Hallmark's order, tier 1 then tier 2 then tier 3.
 
 ```{python}
 #| label: fig-types
-#| fig-cap: "Share of each Hallmark type assigned to each VerusCite label, on the dev and test splits. Types are ordered from Hallmark's tier 1 to tier 3."
+#| fig-cap: "Share of each Hallmark type assigned to each VerusCite label. Types are ordered from Hallmark's tier 1 to tier 3."
 #| fig-height: 6.2
 #| fig-width: 8
-table = R.type_table(df, "dev_test")
+table = R.type_table(df, "all")
 fig, ax = plt.subplots()
 left = None
 y = list(range(len(table)))[::-1]
@@ -195,14 +184,14 @@ fig.tight_layout()
 ```{python}
 #| label: tbl-types
 #| output: asis
-table = R.type_table(df, "dev_test")
+table = R.type_table(df, "all")
 show = table[["Type", "Tier", "n", "Verified", "Minor error", "Not found", "Hallucination"]].copy()
 show["n"] = show["n"].map(lambda v: f"{int(v):,}")
 for col in ["Verified", "Minor error", "Not found", "Hallucination"]:
     show[col] = show[col].map(lambda v: f"{int(v):,}")
 print(show.to_markdown(index=False))
 print()
-print(": Hallucinated entries on the dev and test splits, by Hallmark type. Tier is Hallmark's difficulty tier.")
+print(": Hallucinated entries, by Hallmark type. Tier is Hallmark's difficulty tier.")
 ```
 
 Plausible fabrications and fabricated DOIs are the clean invented entries. Of `{python} com(type_n("plausible fabrication"))` plausible fabrications, `{python} pct(type_rate("plausible fabrication", "Hallucination"))` are hallucinations and `{python} pct(type_rate("plausible fabrication", "Not found"))` are not found. Of `{python} com(type_n("fabricated doi"))` fabricated DOIs, `{python} pct(type_rate("fabricated doi", "Hallucination"))` are hallucinations and `{python} pct(type_rate("fabricated doi", "Not found"))` are not found.
@@ -219,31 +208,29 @@ I score three rules. The strict rule counts only VerusCite's hallucination label
 #| label: tbl-rates
 #| output: asis
 rows = []
-for split in ["dev_public", "test_public", "dev_test"]:
-    for rule in R.RULES:
-        m = R.metrics_for(df, split, rule)
-        rows.append({
-            "Split": R.SPLIT_LABELS[split],
-            "Rule": R.RULE_LABELS[rule],
-            "Caught": f"{m['tp']:,} / {m['n_pos']:,}",
-            "Recall": pct(m["recall"]),
-            "False positives": f"{m['fp']:,} / {m['n_neg']:,}",
-            "FPR": pct(m["fpr"]),
-        })
+for rule in R.RULES:
+    m = R.metrics_for(df, "all", rule)
+    rows.append({
+        "Rule": R.RULE_LABELS[rule],
+        "Caught": f"{m['tp']:,} / {m['n_pos']:,}",
+        "Recall": pct(m["recall"]),
+        "False positives": f"{m['fp']:,} / {m['n_neg']:,}",
+        "FPR": pct(m["fpr"]),
+    })
 print(pd.DataFrame(rows).to_markdown(index=False))
 print()
 print(": Recall on Hallmark's hallucinated entries and the false positive rate on valid entries. Caught is true positives over hallucinated entries. False positives are valid entries the rule flags.")
 ```
 
-On dev and test together, the hallucination label catches `{python} com(M("dev_test", "hallucination", "tp"))` of `{python} com(M("dev_test", "hallucination", "n_pos"))` hallucinated entries, recall `{python} pct(M("dev_test", "hallucination", "recall"))`, and it flags `{python} com(M("dev_test", "hallucination", "fp"))` of `{python} com(M("dev_test", "hallucination", "n_neg"))` valid entries, a false positive rate of `{python} pct(M("dev_test", "hallucination", "fpr"))`. Dev and test are close: recall `{python} pct(M("dev_public", "hallucination", "recall"))` and `{python} pct(M("test_public", "hallucination", "recall"))`, false positive rates `{python} pct(M("dev_public", "hallucination", "fpr"))` and `{python} pct(M("test_public", "hallucination", "fpr"))`.
+The hallucination label catches `{python} com(M("all", "hallucination", "tp"))` of `{python} com(M("all", "hallucination", "n_pos"))` hallucinated entries, recall `{python} pct(M("all", "hallucination", "recall"))`, and it flags `{python} com(M("all", "hallucination", "fp"))` of `{python} com(M("all", "hallucination", "n_neg"))` valid entries, a false positive rate of `{python} pct(M("all", "hallucination", "fpr"))`.
 
-Counting not found with hallucination raises recall to `{python} pct(M("dev_test", "hall_or_nf", "recall"))` (`{python} com(M("dev_test", "hall_or_nf", "tp"))` of `{python} com(M("dev_test", "hall_or_nf", "n_pos"))`) and raises the false positive rate to `{python} pct(M("dev_test", "hall_or_nf", "fpr"))` (`{python} com(M("dev_test", "hall_or_nf", "fp"))` of `{python} com(M("dev_test", "hall_or_nf", "n_neg"))`). The extra true positives are the `{python} com(cell("dev_test", "Hallucinated", "Not found"))` hallucinated entries labeled not found. The extra false positives are the `{python} com(cell("dev_test", "Valid", "Not found"))` valid entries with the same label. Not found is doing both jobs: it holds missed hallucinations, and it holds real papers the search did not return.
+Counting not found with hallucination raises recall to `{python} pct(M("all", "hall_or_nf", "recall"))` (`{python} com(M("all", "hall_or_nf", "tp"))` of `{python} com(M("all", "hall_or_nf", "n_pos"))`) and raises the false positive rate to `{python} pct(M("all", "hall_or_nf", "fpr"))` (`{python} com(M("all", "hall_or_nf", "fp"))` of `{python} com(M("all", "hall_or_nf", "n_neg"))`). The extra true positives are the `{python} com(cell("all", "Hallucinated", "Not found"))` hallucinated entries labeled not found. The extra false positives are the `{python} com(cell("all", "Valid", "Not found"))` valid entries with the same label. Not found is doing both jobs: it holds missed hallucinations, and it holds real papers the search did not return.
 
-Counting minor errors as well raises recall to `{python} pct(M("dev_test", "not_verified", "recall"))` and the false positive rate to `{python} pct(M("dev_test", "not_verified", "fpr"))`. That rule flags every entry VerusCite did not fully accept. Most of the recall it adds, relative to the not-found rule, is the real-paper types.
+Counting minor errors as well raises recall to `{python} pct(M("all", "not_verified", "recall"))` and the false positive rate to `{python} pct(M("all", "not_verified", "fpr"))`. That rule flags every entry VerusCite did not fully accept. Most of the recall it adds, relative to the not-found rule, is the real-paper types.
 
-Hallmark reports detection rate and false positive rate on dev for a DOI lookup, several prompted models, and its own bibtex-updater. On that split the DOI lookup is at detection rate 0.218 and false positive rate 0.043, Gemini 2.5 Pro is at 0.476 and 0.050, and bibtex-updater, which they treat as a co-designed upper bound, is at 0.820 and 0.051 when abstentions are scored as valid [@kim2026hallmark]. VerusCite's hallucination label on the same split is recall `{python} pct(M("dev_public", "hallucination", "recall"))` and false positive rate `{python} pct(M("dev_public", "hallucination", "fpr"))`. Counting not found, it is recall `{python} pct(M("dev_public", "hall_or_nf", "recall"))` and false positive rate `{python} pct(M("dev_public", "hall_or_nf", "fpr"))`. I would not rank these against their table as if the positive class were the same. Their detection rate credits a wrong venue. VerusCite's hallucination label does not.
+Hallmark's published table is on the dev file alone: a DOI lookup at detection rate 0.218 and false positive rate 0.043, Gemini 2.5 Pro at 0.476 and 0.050, and bibtex-updater, which they treat as a co-designed upper bound, at 0.820 and 0.051 when abstentions are scored as valid [@kim2026hallmark]. The rates above are the full public set. Their detection rate also credits a wrong venue, which VerusCite's hallucination label does not.
 
-@tbl-fold recomputes the dev-and-test rates the two ways Hallmark uses when those four real-paper types stop counting as hallucinations. Dropping them removes the entries from the scored set. Scoring them as valid means a flag on one of them is a false positive.
+@tbl-fold recomputes the rates the two ways Hallmark uses when those four real-paper types stop counting as hallucinations. Dropping them removes the entries from the scored set. Scoring them as valid means a flag on one of them is a false positive.
 
 ```{python}
 #| label: tbl-fold
@@ -252,7 +239,7 @@ rows = []
 for mode, mode_label in [("drop", "Dropped from the scored set"), ("as_valid", "Scored as valid")]:
     folded = R.fold_frame(df, mode)
     for rule in ("hallucination", "hall_or_nf", "not_verified"):
-        m = R.metrics_for(folded, "dev_test", rule)
+        m = R.metrics_for(folded, "all", rule)
         rows.append({
             "Real-paper types": mode_label,
             "Rule": R.RULE_LABELS[rule],
@@ -263,27 +250,23 @@ for mode, mode_label in [("drop", "Dropped from the scored set"), ("as_valid", "
         })
 print(pd.DataFrame(rows).to_markdown(index=False))
 print()
-print(": Dev and test, after the four real-paper types (wrong venue, preprint cited as published, partial author list, arXiv version mismatch) are dropped or treated as valid.")
+print(": The full public set, after the four real-paper types (wrong venue, preprint cited as published, partial author list, arXiv version mismatch) are dropped or treated as valid.")
 ```
 
-Under the strict rule, dropping those types moves recall from `{python} pct(M("dev_test", "hallucination", "recall"))` to `{python} pct(R.metrics_for(R.fold_frame(df, "drop"), "dev_test", "hallucination")["recall"])`. The false positive rate stays `{python} pct(R.metrics_for(R.fold_frame(df, "drop"), "dev_test", "hallucination")["fpr"])`, because the dropped entries were hallucinated, so the valid count does not change. Treating them as valid moves the false positive rate to `{python} pct(R.metrics_for(R.fold_frame(df, "as_valid"), "dev_test", "hallucination")["fpr"])`. Flagging a wrong venue is then a false alarm, which is what the hallucination label mostly avoids by putting those entries in minor error.
-
-On the stress split the strict recall is `{python} pct(M("stress_test", "hallucination", "recall"))` and the not-found rule reaches `{python} pct(M("stress_test", "hall_or_nf", "recall"))`. The one valid entry is `{python} df.loc[(df.split == "stress_test") & (df.label == "VALID"), "vc_status"].iloc[0].replace("_", " ")`. Hallmark built that split from merged citations, partial author lists, and arXiv version mismatches, so a low strict recall there is the minor-error rule showing up again.
-
-The `{python} com(int(((df.split.isin(["dev_public", "test_public"])) & (df.generation_method == "real_world") & (df.label == "HALLUCINATED")).sum()))` real-world hallucinated entries on dev and test, the ones taken from published papers rather than from a perturbation, have strict recall `{python} pct(R.metrics_for(df[(df.generation_method == "real_world") | (df.label == "VALID")], "dev_test", "hallucination")["recall"])`. That figure uses the real-world hallucinations as the positive class and every valid entry on dev and test as the negative class. The false positive rate matches the strict rule in @tbl-rates, `{python} pct(M("dev_test", "hallucination", "fpr"))`, because the valid entries are unchanged.
+Under the strict rule, dropping those types moves recall from `{python} pct(M("all", "hallucination", "recall"))` to `{python} pct(R.metrics_for(R.fold_frame(df, "drop"), "all", "hallucination")["recall"])`. The false positive rate stays `{python} pct(R.metrics_for(R.fold_frame(df, "drop"), "all", "hallucination")["fpr"])`, because the dropped entries were hallucinated, so the valid count does not change. Treating them as valid moves the false positive rate to `{python} pct(R.metrics_for(R.fold_frame(df, "as_valid"), "all", "hallucination")["fpr"])`. Flagging a wrong venue is then a false alarm, which is what the hallucination label mostly avoids by putting those entries in minor error.
 
 # A score and the ROC curve
 
 The four labels are already an order: verified, minor error, not found, hallucination. VerusCite also stores a confidence between 0 and 1. That number is how sure it is of the label it chose. It is not the probability that Hallmark would call the entry hallucinated, so I do not treat it as a calibrated probability of the benchmark label.
 
-I still want one score, so that a threshold can move from the strict rule to the broader ones. The label sets the band. Inside the band, higher confidence moves a verified entry down, toward the safe end, and moves the other three labels up. A threshold at the hallucination band is the strict rule. A threshold at the not-found band adds not found. A threshold at the minor-error band adds minor errors. @fig-roc is the ROC curve for that score on dev and test. The three marked points are the three rules, computed from the labels directly, so they do not depend on the tie-break.
+I still want one score, so that a threshold can move from the strict rule to the broader ones. The label sets the band. Inside the band, higher confidence moves a verified entry down, toward the safe end, and moves the other three labels up. A threshold at the hallucination band is the strict rule. A threshold at the not-found band adds not found. A threshold at the minor-error band adds minor errors. @fig-roc is the ROC curve for that score on the full public set. The three marked points are the three rules, computed from the labels directly, so they do not depend on the tie-break.
 
 ```{python}
 #| label: fig-roc
-#| fig-cap: "ROC curve for the label-and-confidence score on the dev and test splits. The marked points are the three rules in the rates table."
+#| fig-cap: "ROC curve for the label-and-confidence score on the full public set. The marked points are the three rules in the rates table."
 #| fig-height: 4.4
 #| fig-width: 4.8
-curve = R.roc_for(df, "dev_test")
+curve = R.roc_for(df, "all")
 fig, ax = plt.subplots()
 ax.plot(curve["fpr"], curve["tpr"], color="#2a78d6", lw=1.8)
 ax.plot([0, 1], [0, 1], color="#52514e", lw=1, ls=":")
@@ -302,18 +285,18 @@ ax.set_xlim(-0.02, 1.02)
 ax.set_ylim(-0.02, 1.02)
 ax.set_xlabel("False positive rate")
 ax.set_ylabel("Recall")
-ax.set_title("Dev and test")
+ax.set_title("Public entries")
 ax.legend(loc="lower right", fontsize=8)
 fig.tight_layout()
 ```
 
-The area under the curve is `{python} num(R.auc_for(df, "dev_test"), 3)`. Using the four labels alone, with confidence ignored, the area is `{python} num(R.auc_for(df, "dev_test", fine=False), 3)`. On dev alone the fine score has area `{python} num(R.auc_for(df, "dev_public"), 3)`, and on test `{python} num(R.auc_for(df, "test_public"), 3)`.
+The area under the curve is `{python} num(R.auc_for(df, "all"), 3)`. Using the four labels alone, with confidence ignored, the area is `{python} num(R.auc_for(df, "all", fine=False), 3)`.
 
-The area is higher than the strict rule's recall because the score gets credit for ranking a minor error above a verified entry, and a not found above a minor error, even when the hallucination label is off. That is the useful reading of the curve. The operating point a venue would actually ship is one of the three points, and the left-hand one is the hallucination label, with recall `{python} pct(M("dev_test", "hallucination", "recall"))` and false positive rate `{python} pct(M("dev_test", "hallucination", "fpr"))`. Moving right buys the not-found and minor-error entries back, and it pays for them in false positives.
+The area is higher than the strict rule's recall because the score gets credit for ranking a minor error above a verified entry, and a not found above a minor error, even when the hallucination label is off. That is the useful reading of the curve. The operating point a venue would actually ship is one of the three points, and the left-hand one is the hallucination label, with recall `{python} pct(M("all", "hallucination", "recall"))` and false positive rate `{python} pct(M("all", "hallucination", "fpr"))`. Moving right buys the not-found and minor-error entries back, and it pays for them in false positives.
 
 # Limits
 
-This is a check of bibliographic metadata, which is also what Hallmark measures. I did not ask whether a manuscript's claim is supported by the cited paper. The public splits are mostly papers from major machine-learning venues. A bibliography of books, reports, or legal citations would land in different places, and not found would be more common for work that is real and absent from the indexes VerusCite searches.
+This is a check of bibliographic metadata, which is also what Hallmark measures. I did not ask whether a manuscript's claim is supported by the cited paper. The public entries are mostly papers from major machine-learning venues. A bibliography of books, reports, or legal citations would land in different places, and not found would be more common for work that is real and absent from the indexes VerusCite searches.
 
 The duplicate rule is a property of the product, not of the benchmark. A user who uploads one file in which the same title and authors appear twice will get one check. I split the file so the numbers above are one check per entry. The links in @tbl-links are that run.
 
