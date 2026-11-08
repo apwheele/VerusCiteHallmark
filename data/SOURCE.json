@@ -1,0 +1,34 @@
+{
+  "repo": "https://github.com/rpatrik96/hallmark",
+  "commit": "c62d296d1d2e3e6f9cb325e37963b63350ab2ca4",
+  "pinned_commit": "c62d296d1d2e3e6f9cb325e37963b63350ab2ca4",
+  "version": "1.2.4",
+  "blind": true,
+  "splits": [
+    "dev_public",
+    "test_public",
+    "stress_test"
+  ],
+  "n": 2072,
+  "batches": 11,
+  "max_collision": 1661,
+  "max_per_upload": 300,
+  "probe": {
+    "n": 25,
+    "seconds": 76
+  },
+  "credits": 24,
+  "batch_sizes": {
+    "0": 300,
+    "1": 300,
+    "2": 300,
+    "3": 300,
+    "4": 300,
+    "5": 161,
+    "6": 296,
+    "7": 91,
+    "8": 17,
+    "9": 5,
+    "10": 2
+  }
+}

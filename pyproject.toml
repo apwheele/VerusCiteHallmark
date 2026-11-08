@@ -1,0 +1,29 @@
+[project]
+name = "hallmarkcite"
+version = "0.1.0"
+description = "VerusCite scored on the Hallmark citation benchmark"
+readme = "README.md"
+authors = [
+    { name = "apwheele", email = "apwheele@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "matplotlib>=3.9",
+    "pandas>=2.2",
+    "requests>=2.32",
+    "scikit-learn>=1.5",
+    "tabulate>=0.9",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.4,<0.14.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "ipykernel>=6.29",
+    "pytest>=8.3",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,11 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+.quarto/
+results/watch_state.json
+results/watch.log
+results/submit.log
+results/submit-run.log
+data/probe.bib
+results/probe_id.txt
