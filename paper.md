@@ -110,15 +110,15 @@ Under the strict rule, dropping those types moves recall from 50.2% to 57.2%. Th
 
 # A score and the ROC curve
 
-The four labels are already an order: verified, minor error, not found, hallucination. VerusCite also stores a confidence between 0 and 1. That number is how sure it is of the label it chose. It is not the probability that Hallmark would call the entry hallucinated, so I do not treat it as a calibrated probability of the benchmark label.
+Each entry gets one score. Verified is 0, minor error is 1, not found is 2, and hallucination is 3. Confidence is between 0 and 1, and it is how sure VerusCite is of the label it chose. I add the confidence inside that label’s slot, multiplied by 0.999, so it cannot reach the next label. For a verified entry the addition is 0.999 times one minus the confidence, so a more confident verified call scores lower. For the other three labels the addition is 0.999 times the confidence, so a more confident call scores higher. Every verified score is below 1. Every minor error is at least 1 and below 2. Every not found is at least 2 and below 3. Every hallucination is at least 3 and below 4.
 
-I still want one score, so that a threshold can move from the strict rule to the broader ones. The label sets the band. Inside the band, higher confidence moves a verified entry down, toward the safe end, and moves the other three labels up. A threshold at the hallucination band is the strict rule. A threshold at the not-found band adds not found. A threshold at the minor-error band adds minor errors. <a href="#fig-roc" class="quarto-xref">Figure 2</a> is the ROC curve for that score on the full public set. The three marked points are the three rules, computed from the labels directly, so they do not depend on the tie-break.
+<a href="#fig-roc" class="quarto-xref">Figure 2</a> is an ordinary ROC curve on that score. Hallmark’s hallucinated label is the positive class. I sort the entries from the highest score to the lowest. At each distinct score, the threshold flags every entry at or above it. Recall is the share of hallucinated entries flagged. The false positive rate is the share of valid entries flagged. Those pairs are the curve. The routine is `sklearn.metrics.roc_curve`. Points that lie on the straight line between their neighbors are left off the plot. The line is the same either way.
 
 ![](paper_files/figure-commonmark/fig-roc-output-1.png)
 
-The area under the curve is 0.937. Using the four labels alone, with confidence ignored, the area is 0.907.
+The area under the curve is 0.937. Using only the four label numbers, with confidence ignored, the area is 0.907.
 
-The area is higher than the strict rule’s recall because the score gets credit for ranking a minor error above a verified entry, and a not found above a minor error, even when the hallucination label is off. That is the useful reading of the curve. The operating point a venue would actually ship is one of the three points, and the left-hand one is the hallucination label, with recall 50.2% and false positive rate 0.1%. Moving right buys the not-found and minor-error entries back, and it pays for them in false positives.
+The marked points are the three rules in <a href="#tbl-rates" class="quarto-xref">Table 4</a>. They use the label and ignore confidence. Scores of 3 or above are the hallucination label, recall 50.2% and false positive rate 0.1%. Scores of 2 or above add not found. Scores of 1 or above add minor errors. Between those points the curve is only the confidence order inside one label. The area is larger than the hallucination label’s recall because a minor error still ranks above a verified entry, and a not found still ranks above a minor error.
 
 # Limits
 
@@ -130,7 +130,7 @@ Hallmark has not settled whether a real paper with the wrong venue is a hallucin
 
 # AI use disclosure
 
-The code, the API run, and the text were produced with Grok (xAI, Grok 4.7) under my direction. I specified the benchmark, the use of the VerusCite API, the crosstab of VerusCite’s labels with Hallmark’s, the recall and false positive rate, the AUC, the two appendices, and the Figure 1 legend and gridlines. The split into collision-free batches was required by VerusCite’s duplicate rule, which would otherwise have skipped entries that share a title and author list. All numbers and figures are computed from the scripts and the saved API results in the repository.
+The code, the API run, and the text were produced with Grok (xAI, Grok 4.7) under my direction. I specified the benchmark, the use of the VerusCite API, the crosstab of VerusCite’s labels with Hallmark’s, the recall and false positive rate, the AUC, a plainer account of how that ROC score is built, the two appendices, and the Figure 1 legend and gridlines. The split into collision-free batches was required by VerusCite’s duplicate rule, which would otherwise have skipped entries that share a title and author list. All numbers and figures are computed from the scripts and the saved API results in the repository.
 
 # Appendix A. Valid entries that were not verified
 
