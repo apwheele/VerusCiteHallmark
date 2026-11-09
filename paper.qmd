@@ -128,6 +128,10 @@ def quoted_title(key):
     return '"' + entry(key, "vc_title") + '"'
 
 
+def suffix_label():
+    return ", ".join(R.valid_miss_version_suffixes(df))
+
+
 FUTURE_YEAR_MIN, FUTURE_YEAR_MAX = R.future_year_span(df)
 ```
 
@@ -271,7 +275,7 @@ That valid entry is `{python} lead_author("ed071a6dfa34")` and coauthors, `{pyth
 
 Counting not found with hallucination raises recall to `{python} pct(M("all", "hall_or_nf", "recall"))` (`{python} com(M("all", "hall_or_nf", "tp"))` of `{python} com(M("all", "hall_or_nf", "n_pos"))`) and raises the false positive rate to `{python} pct(M("all", "hall_or_nf", "fpr"))` (`{python} com(M("all", "hall_or_nf", "fp"))` of `{python} com(M("all", "hall_or_nf", "n_neg"))`). The extra true positives are the `{python} com(cell("all", "Hallucinated", "Not found"))` hallucinated entries labeled not found. The extra false positives are the `{python} com(cell("all", "Valid", "Not found"))` valid entries with the same label. One of them is Hallmark's canary string, a contamination marker in the stress file, with no paper behind it. The other two are real ICLR papers the search did not return: `{python} lead_author("c90520a18b48")` and coauthors, `{python} quoted_title("c90520a18b48")`, `{python} entry("c90520a18b48", "vc_year")` ([arXiv:2102.10454](https://arxiv.org/abs/2102.10454)), and `{python} lead_author("ba6f8800e25a")` and coauthors, `{python} quoted_title("ba6f8800e25a")`, `{python} entry("ba6f8800e25a", "vc_year")` ([arXiv:2302.02184](https://arxiv.org/abs/2302.02184)). Those two are the misses. Not found is doing both jobs: it holds missed hallucinations, and it holds real papers the search did not return.
 
-Counting minor errors as well raises recall to `{python} pct(M("all", "not_verified", "recall"))` and the false positive rate to `{python} pct(M("all", "not_verified", "fpr"))`. That rule flags every entry VerusCite did not fully accept. Most of the recall it adds, relative to the not-found rule, is the real-paper types.
+Counting minor errors as well raises recall to `{python} pct(M("all", "not_verified", "recall"))` and the false positive rate to `{python} pct(M("all", "not_verified", "fpr"))`. That rule flags every entry VerusCite did not fully accept. Most of the recall it adds, relative to the not-found rule, is the real-paper types. Of the `{python} com(M("all", "not_verified", "fp"))` valid entries it flags, `{python} com(R.valid_miss_version_doi_count(df))` have a DOI that ends in a version suffix. Appendix A separates those from the year error, the given-name error, and the author-order calls.
 
 Hallmark's published table is on the dev file alone: a DOI lookup at detection rate 0.218 and false positive rate 0.043, Gemini 2.5 Pro at 0.476 and 0.050, and bibtex-updater, which they treat as a co-designed upper bound, at 0.820 and 0.051 when abstentions are scored as valid [@kim2026hallmark]. The rates above are the full public set. Their detection rate also credits a wrong venue, which VerusCite's hallucination label does not.
 
@@ -355,17 +359,23 @@ Hallmark has not settled whether a real paper with the wrong venue is a hallucin
 
 # AI use disclosure
 
-The code, the API run, and the text were produced with Grok (xAI, Grok 4.7) under my direction. I specified the benchmark, the use of the VerusCite API, the crosstab of VerusCite's labels with Hallmark's, the recall and false positive rate, the AUC, the worked examples for how that ROC score is built, the walk-through of the valid entries in those false-positive counts, the two appendices with the full citation and the checker's note, and the Figure 1 legend and gridlines. The split into collision-free batches was required by VerusCite's duplicate rule, which would otherwise have skipped entries that share a title and author list. All numbers and figures are computed from the scripts and the saved API results in the repository.
+The code, the API run, and the text were produced with Grok (xAI, Grok 4.7) under my direction. I specified the benchmark, the use of the VerusCite API, the crosstab of VerusCite's labels with Hallmark's, the recall and false positive rate, the AUC, the worked examples for how that ROC score is built, the walk-through of the valid entries in those false-positive counts, the two appendices with the full citation and the checker's note, the count of version-suffixed DOIs among those valid misses, and the Figure 1 legend and gridlines. The split into collision-free batches was required by VerusCite's duplicate rule, which would otherwise have skipped entries that share a title and author list. All numbers and figures are computed from the scripts and the saved API results in the repository.
 
 # Appendix A. Valid entries that were not verified {.unnumbered}
 
 Hallmark marks the entries in @tbl-valid-misses valid. VerusCite did not verify them: `{python} com(cell("all", "Valid", "Minor error"))` minor errors, `{python} com(cell("all", "Valid", "Not found"))` not found, and `{python} com(cell("all", "Valid", "Hallucination"))` called a hallucination.
 
-A fabricated DOI is a minor error when the rest of the citation identifies the paper. I wrote that rule so a bad identifier would be a field to fix, and the paper would still count as found. An unresolved DOI is the same call. Of the minor errors in this table, `{python} com(diff_n(R.DOI_DIFF))` are that case. Each one is an arXiv DOI with a `v1` suffix. The suffix does not resolve. The title, authors, and year match the preprint.
+A fabricated DOI is a minor error when the rest of the citation identifies the paper. I wrote that rule so a bad identifier would be a field to fix, and the paper would still count as found. An unresolved DOI is the same call. Of the `{python} com(len(R.valid_miss_records(df)))` entries in this table, `{python} com(R.valid_miss_version_doi_count(df))` append a version number to the DOI. Every one of those suffixes is `{python} suffix_label()`. For `{python} com(diff_n(R.DOI_DIFF))` of them, the note says the suffix does not resolve and the title, authors, and year match the preprint. The other `{python} com(R.valid_miss_version_doi_count(df) - diff_n(R.DOI_DIFF))` still end in that suffix, and the note names another field. `{python} quoted_title("a0527a7c2d1b")` is a preprint title that changed between versions. `{python} quoted_title("e835ddd85ea6")` is an author list: the citation matches the v1 author list, including Weiping Wang, and the note compares it with a later list.
 
-A year off by one is a minor error for the same reason. The paper is the one cited, and the year is the field that is wrong. That rule accounts for `{python} com(diff_n(R.YEAR_DIFF))` of these valid entries. Hallmark's future-date type is a larger shift, the year set from `{python} FUTURE_YEAR_MIN` to `{python} FUTURE_YEAR_MAX`, and `{python} pct(type_rate("future date", "Minor error"))` of those entries are minor errors when the year is checked against the record.
+A year off by one is a minor error for the same reason. The paper is the one cited, and the year is the field that is wrong. That rule accounts for `{python} com(diff_n(R.YEAR_DIFF))` of these valid entries, `{python} quoted_title("f34f26c83153")`. The citation says `{python} entry("f34f26c83153", "vc_year")`. The note says the ICLR page is the 2020 conference. That is a real year error. Hallmark's future-date type is a larger shift, the year set from `{python} FUTURE_YEAR_MIN` to `{python} FUTURE_YEAR_MAX`, and `{python} pct(type_rate("future date", "Minor error"))` of those entries are minor errors when the year is checked against the record.
 
-The other minor errors are author order, an author list, a given name, or a preprint title that changed between versions. The three not-found rows are the canary string and the two papers the search missed. The hallucination row is the DOI that resolves to a different paper. The trace is the checker's full note.
+`{python} quoted_title("f37417a49de6")` is a real given-name difference. The citation says Drew Bagnell. The note says the Microsoft Research page lists J. Andrew Bagnell.
+
+`{python} quoted_title("e1694f2a0b29")` lists Kui Ren. That is the name on the CVPR paper. The checker's note says the IEEE Xplore page lists six authors and leaves Kui Ren off. One IEEE HTML rendering of the same record shows Kui Rent. The benchmark spelling matches the paper. The minor-error call is the short IEEE author list.
+
+The other `{python} com(R.valid_miss_plain_diff_count(df, R.AUTHOR_ORDER_DIFF))` minor errors are author-order calls: `{python} quoted_title("b2505314787f")`, `{python} quoted_title("bcc0d3be5e64")`, and `{python} quoted_title("ea8d6b0ea3d9")`. The citation order matches the proceedings order on the pages I checked. `{python} quoted_title("b2505314787f")` puts Xing Xie before Jian Tang, which is the ICLR order, and the note says the citation does the reverse. The note on `{python} quoted_title("bcc0d3be5e64")` says the order differs and that the NeurIPS page confirms the cited order. I need to look at how the checker is reading author order.
+
+The three not-found rows are the canary string and the two papers the search missed. The hallucination row is the DOI that resolves to a different paper. The trace is the checker's full note.
 
 ```{python}
 #| output: asis

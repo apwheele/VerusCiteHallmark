@@ -325,6 +325,7 @@ _MD_URL = str.maketrans({
 })
 
 _KEY_RE = re.compile(r"@\w+\s*\{\s*([^,\s]+)\s*,")
+_VERSION_DOI_RE = re.compile(r"v\d+$", re.IGNORECASE)
 _API_EXTRA: dict[str, pd.DataFrame] = {}
 
 
@@ -507,6 +508,32 @@ def valid_miss_records(df: pd.DataFrame) -> pd.DataFrame:
 def valid_miss_table(df: pd.DataFrame) -> pd.DataFrame:
     """Every valid entry VerusCite did not verify, for the appendix table."""
     return _display_frame(valid_miss_records(df))
+
+
+def has_version_suffix_doi(value) -> bool:
+    """True when the DOI ends in a version suffix such as ``v1``."""
+    return bool(_VERSION_DOI_RE.search(_clean(value)))
+
+
+def valid_miss_version_doi_count(df: pd.DataFrame) -> int:
+    """Valid misses whose DOI ends in a version suffix."""
+    records = valid_miss_records(df)
+    return int(records["vc_doi"].map(has_version_suffix_doi).sum())
+
+
+def valid_miss_version_suffixes(df: pd.DataFrame) -> list[str]:
+    """The version suffixes on those DOIs, lowercased, in sorted order."""
+    records = valid_miss_records(df)
+    mask = records["vc_doi"].map(has_version_suffix_doi)
+    found = records.loc[mask, "vc_doi"].str.extract(r"(v\d+)$", flags=re.I, expand=False)
+    return sorted(set(found.dropna().str.lower()))
+
+
+def valid_miss_plain_diff_count(df: pd.DataFrame, name: str) -> int:
+    """Valid misses with this reason and no version suffix on the DOI."""
+    records = valid_miss_records(df)
+    versioned = records["vc_doi"].map(has_version_suffix_doi)
+    return int((records["Difference"].eq(name) & ~versioned).sum())
 
 
 def future_year_span(df: pd.DataFrame) -> tuple[int, int]:

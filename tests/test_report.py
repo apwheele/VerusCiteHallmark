@@ -12,12 +12,16 @@ from hallmarkcite.report import (
     YEAR_DIFF,
     _one_line,
     future_year_span,
+    has_version_suffix_doi,
     load_joined,
     sample_display,
     suspicion,
     type_sample_tables,
+    valid_miss_plain_diff_count,
     valid_miss_records,
     valid_miss_table,
+    valid_miss_version_doi_count,
+    valid_miss_version_suffixes,
 )
 
 
@@ -83,6 +87,23 @@ def test_valid_misses_are_the_unverified_valid_entries():
     assert "Benchmark Authors" in canary["Citation"]
     assert "stress\\_test" in canary["Citation"]
     assert "not a finding of fabrication" in canary["Trace"]
+
+
+def test_thirty_five_valid_misses_have_a_version_suffix_doi():
+    records = valid_miss_records(load_joined())
+    versioned = records["vc_doi"].map(has_version_suffix_doi)
+    assert valid_miss_version_doi_count(load_joined()) == 35
+    assert int(versioned.sum()) == 35
+    assert set(records.loc[versioned, "vc_status"]) == {"minor_error"}
+    assert valid_miss_version_suffixes(load_joined()) == ["v1"]
+    assert int((records.loc[versioned, "Difference"] == DOI_DIFF).sum()) == 33
+    other = records.loc[versioned & records["Difference"].ne(DOI_DIFF), "Difference"]
+    assert sorted(other.tolist()) == sorted([TITLE_DIFF, AUTHOR_LIST_DIFF])
+    assert len(records) - int(versioned.sum()) == 10
+    assert valid_miss_plain_diff_count(load_joined(), AUTHOR_ORDER_DIFF) == 3
+    assert valid_miss_plain_diff_count(load_joined(), YEAR_DIFF) == 1
+    assert valid_miss_plain_diff_count(load_joined(), GIVEN_NAME_DIFF) == 1
+    assert valid_miss_plain_diff_count(load_joined(), AUTHOR_LIST_DIFF) == 1
 
 
 def test_future_dates_span_2030_to_2036():
