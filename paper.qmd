@@ -95,13 +95,25 @@ def type_rate(name, status):
 def type_n(name):
     table = R.type_table(df, "all")
     return int(table.loc[table.Type == name, "n"].iloc[0])
+
+
+def type_count(name, status):
+    table = R.type_table(df, "all")
+    return int(table.loc[table.Type == name, status].iloc[0])
+
+
+def diff_n(name):
+    return int((R.valid_miss_table(df)["Difference"] == name).sum())
+
+
+FUTURE_YEAR_MIN, FUTURE_YEAR_MAX = R.future_year_span(df)
 ```
 
 # Introduction
 
 Hallmark is a benchmark for tools that check whether a bibliographic entry is real [@kim2026hallmark; @hallmarkrepo]. The release I use is version `{python} source["version"]`, commit `{python} source["commit"][:7]`. The public files are dev, test, and stress, `{python} com(len(labels))` BibTeX entries in total. I score them as one set. VerusCite was not trained on the dev file, so holding that file out does not change the check. The hidden test file is not in the public release. I left out the cross-domain file and the ChatGPT supplement, which Hallmark scores separately from the main table.
 
-Hallmark labels each entry valid or hallucinated, and it gives each hallucinated entry one of 14 types. The types run from a DOI that does not resolve, through a real paper cited at the wrong venue, to a fully invented reference. VerusCite is the checker I run at [veruscite.com](https://veruscite.com) [@veruscite]. It looks the citation up and assigns one of four labels. Verified means a matching source was found and the metadata agrees. A minor error means the same work was found, with a small difference in the year, the author list, or the wording of the title or the venue. Not found means the search did not turn up a matching publication. Hallucination means the citation looks fabricated, or it mixes pieces of different real sources.
+Hallmark labels each entry valid or hallucinated, and it gives each hallucinated entry one of 14 types. The types run from a DOI that does not resolve, through a real paper cited at the wrong venue, to a fully invented reference. VerusCite is the checker I run at [veruscite.com](https://veruscite.com) [@veruscite]. It looks the citation up and assigns one of four labels. Verified means a matching source was found and the metadata agrees. A minor error means the same work was found, with a small difference in the year, the DOI, the author list, or the wording of the title or the venue. Not found means the search did not turn up a matching publication. Hallucination means the citation looks fabricated, or it mixes pieces of different real sources.
 
 The two positive classes are different questions. Hallmark counts a real paper with the wrong venue, a preprint cited as the published version, a shortened author list, and an arXiv record with the venue and year mixed together as hallucinations. Those four types are `{python} pct(REAL_PAPER_SHARE)` of the hallucinated entries, and Hallmark's own paper shows that verifier rankings move when they are taken out of the positive class. VerusCite is built to call a real paper with a small metadata difference a minor error. I also expect some invented entries to come back as not found, because the search missed them, and that label is separate from hallucination. Recall of the hallucination label will be lower for both reasons.
 
@@ -149,7 +161,7 @@ print()
 print(": VerusCite labels against Hallmark's valid and hallucinated labels. Counts are entries.")
 ```
 
-`{python} com(cell("all", "Valid", "Verified"))` of the `{python} com(cell("all", "Valid", "Verified") + cell("all", "Valid", "Minor error") + cell("all", "Valid", "Not found") + cell("all", "Valid", "Hallucination"))` valid entries are verified. The false calls on valid entries are `{python} com(cell("all", "Valid", "Minor error"))` minor errors, `{python} com(cell("all", "Valid", "Not found"))` not found, and `{python} com(cell("all", "Valid", "Hallucination"))` called a hallucination.
+`{python} com(cell("all", "Valid", "Verified"))` of the `{python} com(cell("all", "Valid", "Verified") + cell("all", "Valid", "Minor error") + cell("all", "Valid", "Not found") + cell("all", "Valid", "Hallucination"))` valid entries are verified. The false calls on valid entries are `{python} com(cell("all", "Valid", "Minor error"))` minor errors, `{python} com(cell("all", "Valid", "Not found"))` not found, and `{python} com(cell("all", "Valid", "Hallucination"))` called a hallucination. @tbl-valid-misses lists every one of them.
 
 Of the hallucinated entries, `{python} com(cell("all", "Hallucinated", "Hallucination"))` are hallucinations, `{python} com(cell("all", "Hallucinated", "Not found"))` are not found, `{python} com(cell("all", "Hallucinated", "Minor error"))` are minor errors, and `{python} com(cell("all", "Hallucinated", "Verified"))` are verified. The verified hallucinated entries are the ones VerusCite accepted. The minor errors are mostly the real papers Hallmark still calls hallucinations. The not found row is the miss the hallucination label does not get credit for.
 
@@ -159,7 +171,7 @@ Of the hallucinated entries, `{python} com(cell("all", "Hallucinated", "Hallucin
 #| label: fig-types
 #| fig-cap: "Share of each Hallmark type assigned to each VerusCite label. Types are ordered from Hallmark's tier 1 to tier 3."
 #| fig-height: 6.2
-#| fig-width: 8
+#| fig-width: 9.2
 table = R.type_table(df, "all")
 fig, ax = plt.subplots()
 left = None
@@ -175,9 +187,16 @@ for status in R.STATUS_LABELS.values():
 ax.set_yticks(y)
 ax.set_yticklabels(names)
 ax.set_xlim(0, 1)
+ax.xaxis.set_major_locator(matplotlib.ticker.MultipleLocator(0.1))
+ax.xaxis.set_major_formatter(matplotlib.ticker.FormatStrFormatter("%.1f"))
+ax.grid(False)
+ax.xaxis.grid(True)
+ax.set_axisbelow(True)
 ax.set_xlabel("Share of the type")
 ax.set_title("VerusCite label by Hallmark type")
-ax.legend(loc="lower right", frameon=True)
+ax.legend(
+    loc="center left", bbox_to_anchor=(1.02, 0.5), frameon=True, borderaxespad=0,
+)
 fig.tight_layout()
 ```
 
@@ -194,9 +213,11 @@ print()
 print(": Hallucinated entries, by Hallmark type. Tier is Hallmark's difficulty tier.")
 ```
 
-Plausible fabrications and fabricated DOIs are the clean invented entries. Of `{python} com(type_n("plausible fabrication"))` plausible fabrications, `{python} pct(type_rate("plausible fabrication", "Hallucination"))` are hallucinations and `{python} pct(type_rate("plausible fabrication", "Not found"))` are not found. Of `{python} com(type_n("fabricated doi"))` fabricated DOIs, `{python} pct(type_rate("fabricated doi", "Hallucination"))` are hallucinations and `{python} pct(type_rate("fabricated doi", "Not found"))` are not found.
+Plausible fabrications are the invented entries. Of `{python} com(type_n("plausible fabrication"))` plausible fabrications, `{python} pct(type_rate("plausible fabrication", "Hallucination"))` are hallucinations and `{python} pct(type_rate("plausible fabrication", "Not found"))` are not found.
 
-Wrong venue, a future year, and a partial author list keep a real paper and change one field. Of the wrong-venue entries, `{python} pct(type_rate("wrong venue", "Minor error"))` are minor errors and `{python} pct(type_rate("wrong venue", "Hallucination"))` are hallucinations. Of the future-date entries, `{python} pct(type_rate("future date", "Minor error"))` are minor errors. Of the partial author lists, `{python} pct(type_rate("partial author list", "Minor error"))` are minor errors. Calling only the hallucination label a detection misses that block on purpose.
+A fabricated DOI, with the rest of the citation identifying the paper, is a minor error on purpose. A year off by one is a minor error on purpose. The hallucination label is not meant to catch either one. Of the `{python} com(type_n("fabricated doi"))` fabricated DOIs, `{python} pct(type_rate("fabricated doi", "Minor error"))` are minor errors and `{python} pct(type_rate("fabricated doi", "Hallucination"))` are hallucinations. Hallmark's future-date entries set the year from `{python} FUTURE_YEAR_MIN` to `{python} FUTURE_YEAR_MAX` on a real paper. Of those, `{python} pct(type_rate("future date", "Minor error"))` are minor errors. The other `{python} com(type_count("future date", "Verified"))` were verified by a DOI lookup, and the saved note does not mention the year. Appendix A is where those two rules show up on entries Hallmark marks valid.
+
+Wrong venue and a partial author list keep a real paper and change one field. Of the wrong-venue entries, `{python} pct(type_rate("wrong venue", "Minor error"))` are minor errors and `{python} pct(type_rate("wrong venue", "Hallucination"))` are hallucinations. Of the partial author lists, `{python} pct(type_rate("partial author list", "Minor error"))` are minor errors. Calling only the hallucination label a detection misses that block on purpose.
 
 Near-miss titles sit in between. `{python} pct(type_rate("near miss title", "Minor error"))` are minor errors and `{python} pct(type_rate("near miss title", "Hallucination"))` are hallucinations. A one or two word change in the title is the case VerusCite's minor-error rule is written for, and it is also a Hallmark hallucination.
 
@@ -304,7 +325,92 @@ Hallmark has not settled whether a real paper with the wrong venue is a hallucin
 
 # AI use disclosure
 
-The code, the API run, and the text were produced with Grok (xAI, Grok 4.7) under my direction. I specified the benchmark, the use of the VerusCite API, the crosstab of VerusCite's labels with Hallmark's, the recall and false positive rate, and the AUC. The split into collision-free batches was required by VerusCite's duplicate rule, which would otherwise have skipped entries that share a title and author list. All numbers and figures are computed from the scripts and the saved API results in the repository.
+The code, the API run, and the text were produced with Grok (xAI, Grok 4.7) under my direction. I specified the benchmark, the use of the VerusCite API, the crosstab of VerusCite's labels with Hallmark's, the recall and false positive rate, the AUC, the two appendices, and the Figure 1 legend and gridlines. The split into collision-free batches was required by VerusCite's duplicate rule, which would otherwise have skipped entries that share a title and author list. All numbers and figures are computed from the scripts and the saved API results in the repository.
+
+# Appendix A. Valid entries that were not verified {.unnumbered}
+
+Hallmark marks the entries in @tbl-valid-misses valid. VerusCite did not verify them: `{python} com(cell("all", "Valid", "Minor error"))` minor errors, `{python} com(cell("all", "Valid", "Not found"))` not found, and `{python} com(cell("all", "Valid", "Hallucination"))` called a hallucination.
+
+A fabricated DOI is a minor error when the rest of the citation identifies the paper. I wrote that rule so a bad identifier would be a field to fix, and the paper would still count as found. An unresolved DOI is the same call. Of the minor errors in this table, `{python} com(diff_n(R.DOI_DIFF))` are that case. Each one is an arXiv DOI with a `v1` suffix. The suffix does not resolve. The title, authors, and year match the preprint.
+
+A year off by one is a minor error for the same reason. The paper is the one cited, and the year is the field that is wrong. That rule accounts for `{python} com(diff_n(R.YEAR_DIFF))` of these valid entries. Hallmark's future-date type is a larger shift, the year set from `{python} FUTURE_YEAR_MIN` to `{python} FUTURE_YEAR_MAX`, and `{python} pct(type_rate("future date", "Minor error"))` of those entries are minor errors when the year is checked against the record.
+
+The other minor errors are author order, an author list, a given name, or a preprint title that changed between versions. Two further entries were not found. One row is Hallmark's canary string. One DOI resolves to a different title and author list.
+
+```{python}
+#| output: asis
+show = R.valid_miss_table(df)
+print(show.to_markdown(index=False))
+print()
+print(': Valid entries VerusCite did not verify. Difference is the field the checker named. {#tbl-valid-misses tbl-colwidths="[14,28,8,22,28]"}')
+```
+
+# Appendix B. Verified and minor-error samples {.unnumbered}
+
+For each Hallmark type, the tables below draw up to five entries VerusCite verified and up to five it called a minor error. The draw sorts on the citation key and samples with seed `{python} R.SAMPLE_SEED`. A label with fewer than five entries contributes every row.
+
+```{python}
+#| output: asis
+
+def _join_types(names):
+    if len(names) == 1:
+        return names[0]
+    if len(names) == 2:
+        return f"{names[0]} and {names[1]}"
+    return ", ".join(names[:-1]) + ", and " + names[-1]
+
+
+def _shown(table, status):
+    rows = table["rows"]
+    if rows.empty:
+        return 0
+    return int(rows["vc_status"].eq(status).sum())
+
+
+def _sample_caption(table):
+    pretty = table["label"][0].upper() + table["label"][1:]
+    parts = [pretty + "."]
+    nv, nm = table["n_verified"], table["n_minor"]
+    sv, sm = _shown(table, "verified"), _shown(table, "minor_error")
+    if nv == 0:
+        parts.append("No verified entries.")
+    elif sv == nv:
+        parts.append(f"All {nv} verified entries.")
+    else:
+        parts.append(f"{sv} of {nv} verified entries.")
+    if nm == 0:
+        parts.append("No minor errors.")
+    elif sm == nm:
+        parts.append(f"All {nm} minor errors.")
+    else:
+        parts.append(f"{sm} of {nm} minor errors.")
+    return " ".join(parts)
+
+
+tables = R.type_sample_tables(df)
+empty = [table["label"] for table in tables if table["n_verified"] == 0 and table["n_minor"] == 0]
+if empty:
+    joined = _join_types(empty)
+    joined = joined[0].upper() + joined[1:]
+    if len(empty) == 1:
+        print(f"{joined} has no verified entries and no minor errors, so that type has no table.")
+    else:
+        print(f"{joined} have no verified entries and no minor errors, so those types have no table.")
+    print()
+
+for table in tables:
+    if table["n_verified"] == 0 and table["n_minor"] == 0:
+        continue
+    show = R.sample_display(table["rows"])
+    caption = _sample_caption(table)
+    pretty = table["label"][0].upper() + table["label"][1:]
+    print(f"**{pretty}.**")
+    print()
+    print(show.to_markdown(index=False))
+    print()
+    print(f": {caption}")
+    print()
+```
 
 # References {-}
 

@@ -9,6 +9,7 @@ uses confidence only to break ties inside a label.
 from __future__ import annotations
 
 import json
+import random
 from pathlib import Path
 
 import pandas as pd
@@ -266,3 +267,168 @@ def load_jobs(root: Path | None = None) -> list[dict]:
 def shares(root: Path | None = None) -> list[dict]:
     jobs = load_jobs(root)
     return sorted(jobs, key=lambda job: job["batch"])
+
+
+# Short labels for the appendix of valid entries VerusCite did not verify.
+# The DOI and year labels are the two rules written to stay minor errors
+# when the rest of the citation still identifies the paper.
+DOI_DIFF = "Unresolved DOI; the rest matches"
+YEAR_DIFF = "Year off by one"
+AUTHOR_ORDER_DIFF = "Author order"
+AUTHOR_LIST_DIFF = "Author list"
+GIVEN_NAME_DIFF = "Given name"
+TITLE_DIFF = "Preprint title changed"
+NO_RECORD_DIFF = "No record found"
+CANARY_DIFF = "Canary string"
+OTHER_PAPER_DIFF = "DOI points at a different paper"
+
+SAMPLE_SEED = 20261109
+SAMPLE_N = 5
+
+_MISS_STATUS_ORDER = {"minor_error": 0, "not_found": 1, "hallucination": 2}
+
+
+def _one_line(value) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ""
+    text = " ".join(str(value).split())
+    if text.lower() == "nan":
+        return ""
+    return (
+        text.replace("\\", "\\\\")
+        .replace("|", "\\|")
+        .replace("_", "\\_")
+        .replace("*", "\\*")
+    )
+
+
+def _fmt_year(value) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ""
+    text = str(value).strip()
+    if not text or text.lower() == "nan":
+        return ""
+    return str(int(float(text)))
+
+
+def clip_text(value, n: int = 180) -> str:
+    text = _one_line(value)
+    if len(text) <= n:
+        return text
+    cut = text[: n - 1].rsplit(" ", 1)[0]
+    return cut + "…"
+
+
+def citation_difference(row: pd.Series) -> str:
+    """Why a valid entry was not verified, in the checker's own terms."""
+    notes = _one_line(row.get("vc_notes")).lower()
+    title = _one_line(row.get("vc_title")).lower()
+    matched = _one_line(row.get("vc_matched_title")).lower()
+    status = row.get("vc_status")
+    key = str(row.get("bibtex_key") or "")
+
+    if status == "not_found":
+        if key.startswith("__canary") or "canary" in title:
+            return CANARY_DIFF
+        return NO_RECORD_DIFF
+    if status == "hallucination":
+        return OTHER_PAPER_DIFF
+    if "incorrect year" in notes or "clear year error" in notes:
+        return YEAR_DIFF
+    if "author order" in notes or "author-order" in notes:
+        return AUTHOR_ORDER_DIFF
+    if "given-name" in notes or "given name" in notes:
+        return GIVEN_NAME_DIFF
+    if (
+        "author identities disagree" in notes
+        or "unmatched cited author" in notes
+        or "author-list error" in notes
+        or "added author" in notes
+    ):
+        return AUTHOR_LIST_DIFF
+    if (matched and title != matched) or "version retitle" in notes:
+        return TITLE_DIFF
+    if (
+        "does not resolve" in notes
+        or "version suffix" in notes
+        or "version-suffixed" in notes
+        or "doi as written" in notes
+    ):
+        return DOI_DIFF
+    return "Same paper, small metadata difference"
+
+
+def valid_miss_table(df: pd.DataFrame) -> pd.DataFrame:
+    """Every valid entry VerusCite did not verify."""
+    sub = scored(df)
+    sub = sub[sub["label"].eq("VALID") & ~sub["vc_status"].eq("verified")].copy()
+    sub["_ord"] = sub["vc_status"].map(_MISS_STATUS_ORDER)
+    sub = sub.sort_values(["_ord", "bibtex_key"])
+    return pd.DataFrame({
+        "VerusCite": sub["vc_status"].map(STATUS_LABELS),
+        "Title": sub["vc_title"].map(_one_line),
+        "Year": sub["vc_year"].map(_fmt_year),
+        "DOI": sub["vc_doi"].map(_one_line),
+        "Difference": sub.apply(citation_difference, axis=1),
+    })
+
+
+def future_year_span(df: pd.DataFrame) -> tuple[int, int]:
+    years = scored(df).loc[
+        scored(df)["hallucination_type"].eq("future_date"), "vc_year"
+    ]
+    years = pd.to_numeric(years, errors="coerce").dropna()
+    return int(years.min()), int(years.max())
+
+
+def type_sample_tables(
+    df: pd.DataFrame, n: int = SAMPLE_N, seed: int = SAMPLE_SEED
+) -> list[dict]:
+    """Up to ``n`` verified and ``n`` minor-error rows for each Hallmark type.
+
+    The draw sorts on the citation key, then samples with ``random.Random(seed)``
+    restarted for each label. A label with fewer than ``n`` rows contributes
+    every row.
+    """
+    sub = scored(df)
+    sub = sub[sub["label"].eq("HALLUCINATED")]
+    tables = []
+    for name in TYPE_ORDER:
+        part = sub[sub["hallucination_type"] == name]
+        blocks = []
+        counts = {}
+        for status in ("verified", "minor_error"):
+            block = part[part["vc_status"] == status].sort_values("bibtex_key")
+            counts[status] = int(len(block))
+            if block.empty:
+                continue
+            if len(block) > n:
+                rng = random.Random(seed)
+                keys = rng.sample(block["bibtex_key"].tolist(), n)
+                block = block[block["bibtex_key"].isin(keys)]
+            blocks.append(block.sort_values("bibtex_key"))
+        shown = pd.concat(blocks) if blocks else part.iloc[0:0]
+        tables.append({
+            "type": name,
+            "label": TYPE_LABELS[name],
+            "n_verified": counts.get("verified", 0),
+            "n_minor": counts.get("minor_error", 0),
+            "rows": shown,
+        })
+    return tables
+
+
+def sample_display(rows: pd.DataFrame) -> pd.DataFrame:
+    """Columns for an appendix sample table."""
+    if rows.empty:
+        return pd.DataFrame(
+            columns=["VerusCite", "Title", "Year", "DOI", "Matched DOI", "Note"]
+        )
+    return pd.DataFrame({
+        "VerusCite": rows["vc_status"].map(STATUS_LABELS).to_numpy(),
+        "Title": rows["vc_title"].map(_one_line).to_numpy(),
+        "Year": rows["vc_year"].map(_fmt_year).to_numpy(),
+        "DOI": rows["vc_doi"].map(_one_line).to_numpy(),
+        "Matched DOI": rows["vc_matched_doi"].map(_one_line).to_numpy(),
+        "Note": rows["vc_notes"].map(lambda text: clip_text(text, 180)).to_numpy(),
+    })
