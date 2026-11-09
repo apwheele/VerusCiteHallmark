@@ -103,7 +103,29 @@ def type_count(name, status):
 
 
 def diff_n(name):
-    return int((R.valid_miss_table(df)["Difference"] == name).sum())
+    return int((R.valid_miss_records(df)["Difference"] == name).sum())
+
+
+def score_at(status, confidence):
+    return f"{float(R.suspicion(status, confidence)):.4f}"
+
+
+def entry(key, col):
+    value = df.loc[df["bibtex_key"].eq(key), col].iloc[0]
+    if pd.isna(value):
+        return ""
+    if col == "vc_year":
+        return str(int(float(value)))
+    return str(value)
+
+
+def lead_author(key):
+    first = entry(key, "vc_authors").split(";")[0].strip()
+    return first.split()[-1]
+
+
+def quoted_title(key):
+    return '"' + entry(key, "vc_title") + '"'
 
 
 FUTURE_YEAR_MIN, FUTURE_YEAR_MAX = R.future_year_span(df)
@@ -245,7 +267,9 @@ print(": Recall on Hallmark's hallucinated entries and the false positive rate o
 
 The hallucination label catches `{python} com(M("all", "hallucination", "tp"))` of `{python} com(M("all", "hallucination", "n_pos"))` hallucinated entries, recall `{python} pct(M("all", "hallucination", "recall"))`, and it flags `{python} com(M("all", "hallucination", "fp"))` of `{python} com(M("all", "hallucination", "n_neg"))` valid entries, a false positive rate of `{python} pct(M("all", "hallucination", "fpr"))`.
 
-Counting not found with hallucination raises recall to `{python} pct(M("all", "hall_or_nf", "recall"))` (`{python} com(M("all", "hall_or_nf", "tp"))` of `{python} com(M("all", "hall_or_nf", "n_pos"))`) and raises the false positive rate to `{python} pct(M("all", "hall_or_nf", "fpr"))` (`{python} com(M("all", "hall_or_nf", "fp"))` of `{python} com(M("all", "hall_or_nf", "n_neg"))`). The extra true positives are the `{python} com(cell("all", "Hallucinated", "Not found"))` hallucinated entries labeled not found. The extra false positives are the `{python} com(cell("all", "Valid", "Not found"))` valid entries with the same label. Not found is doing both jobs: it holds missed hallucinations, and it holds real papers the search did not return.
+That valid entry is `{python} lead_author("ed071a6dfa34")` and coauthors, `{python} quoted_title("ed071a6dfa34")`, `{python} entry("ed071a6dfa34", "vc_year")`, with DOI `{python} entry("ed071a6dfa34", "vc_doi")`. The DOI resolves to a different paper: Sehwag, Mahloujifar, Handina, Dai, Xiang, Chiang, and Mittal, "Robust Learning Meets Generative Models: Can Proxy Distributions Improve Adversarial Robustness?" The paper named in the citation is [arXiv:2110.09468](https://arxiv.org/abs/2110.09468). The checker called it a hallucination because the identifier resolves and the title and authors do not match the record it opens. Hallmark marks the entry valid. Its explanation says the DOI was flagged as non-resolving, and that arXiv DOIs resolve. This DOI does resolve. It resolves to the Sehwag paper. The row is in the false-positive count because Hallmark's label is valid. The citation pairs one paper's title and authors with another paper's DOI.
+
+Counting not found with hallucination raises recall to `{python} pct(M("all", "hall_or_nf", "recall"))` (`{python} com(M("all", "hall_or_nf", "tp"))` of `{python} com(M("all", "hall_or_nf", "n_pos"))`) and raises the false positive rate to `{python} pct(M("all", "hall_or_nf", "fpr"))` (`{python} com(M("all", "hall_or_nf", "fp"))` of `{python} com(M("all", "hall_or_nf", "n_neg"))`). The extra true positives are the `{python} com(cell("all", "Hallucinated", "Not found"))` hallucinated entries labeled not found. The extra false positives are the `{python} com(cell("all", "Valid", "Not found"))` valid entries with the same label. One of them is Hallmark's canary string, a contamination marker in the stress file, with no paper behind it. The other two are real ICLR papers the search did not return: `{python} lead_author("c90520a18b48")` and coauthors, `{python} quoted_title("c90520a18b48")`, `{python} entry("c90520a18b48", "vc_year")` ([arXiv:2102.10454](https://arxiv.org/abs/2102.10454)), and `{python} lead_author("ba6f8800e25a")` and coauthors, `{python} quoted_title("ba6f8800e25a")`, `{python} entry("ba6f8800e25a", "vc_year")` ([arXiv:2302.02184](https://arxiv.org/abs/2302.02184)). Those two are the misses. Not found is doing both jobs: it holds missed hallucinations, and it holds real papers the search did not return.
 
 Counting minor errors as well raises recall to `{python} pct(M("all", "not_verified", "recall"))` and the false positive rate to `{python} pct(M("all", "not_verified", "fpr"))`. That rule flags every entry VerusCite did not fully accept. Most of the recall it adds, relative to the not-found rule, is the real-paper types.
 
@@ -278,7 +302,13 @@ Under the strict rule, dropping those types moves recall from `{python} pct(M("a
 
 # A score and the ROC curve
 
-Each entry gets one score. Verified is 0, minor error is 1, not found is 2, and hallucination is 3. Confidence is between 0 and 1, and it is how sure VerusCite is of the label it chose. I add the confidence inside that label's slot, multiplied by 0.999, so it cannot reach the next label. For a verified entry the addition is 0.999 times one minus the confidence, so a more confident verified call scores lower. For the other three labels the addition is 0.999 times the confidence, so a more confident call scores higher. Every verified score is below 1. Every minor error is at least 1 and below 2. Every not found is at least 2 and below 3. Every hallucination is at least 3 and below 4.
+Each entry gets one score. Verified is 0, minor error is 1, not found is 2, and hallucination is 3. Confidence is between 0 and 1, and it is how sure VerusCite is of the label it chose. I add the confidence inside that label's slot, multiplied by 0.999, so it cannot reach the next label.
+
+For a verified entry the piece I add is 0.999 times one minus the confidence. That is the rank plus one minus the confidence, held just short of the next label. A more confident verified call scores lower. For the other three labels the piece I add is 0.999 times the confidence, so a more confident call scores higher.
+
+An entry flagged as verified with confidence `{python} format(0.90, ".2f")` gets a score of `{python} score_at("verified", 0.90)`. An entry flagged as verified with confidence `{python} format(0.20, ".2f")` gets a score of `{python} score_at("verified", 0.20)`. An entry flagged as a minor error with confidence `{python} format(0.80, ".2f")` gets a score of `{python} score_at("minor_error", 0.80)`. An entry flagged as a minor error with confidence `{python} format(0.40, ".2f")` gets a score of `{python} score_at("minor_error", 0.40)`. An entry flagged as not found with confidence `{python} format(0.60, ".2f")` gets a score of `{python} score_at("not_found", 0.60)`. An entry flagged as a hallucination with confidence `{python} format(0.70, ".2f")` gets a score of `{python} score_at("hallucination", 0.70)`.
+
+Every verified score is below 1. Every minor error is at least 1 and below 2. Every not found is at least 2 and below 3. Every hallucination is at least 3 and below 4.
 
 @fig-roc is an ordinary ROC curve on that score. Hallmark's hallucinated label is the positive class. I sort the entries from the highest score to the lowest. At each distinct score, the threshold flags every entry at or above it. Recall is the share of hallucinated entries flagged. The false positive rate is the share of valid entries flagged. Those pairs are the curve. The routine is `sklearn.metrics.roc_curve`. Points that lie on the straight line between their neighbors are left off the plot. The line is the same either way.
 
@@ -325,7 +355,7 @@ Hallmark has not settled whether a real paper with the wrong venue is a hallucin
 
 # AI use disclosure
 
-The code, the API run, and the text were produced with Grok (xAI, Grok 4.7) under my direction. I specified the benchmark, the use of the VerusCite API, the crosstab of VerusCite's labels with Hallmark's, the recall and false positive rate, the AUC, a plainer account of how that ROC score is built, the two appendices, and the Figure 1 legend and gridlines. The split into collision-free batches was required by VerusCite's duplicate rule, which would otherwise have skipped entries that share a title and author list. All numbers and figures are computed from the scripts and the saved API results in the repository.
+The code, the API run, and the text were produced with Grok (xAI, Grok 4.7) under my direction. I specified the benchmark, the use of the VerusCite API, the crosstab of VerusCite's labels with Hallmark's, the recall and false positive rate, the AUC, the worked examples for how that ROC score is built, the walk-through of the valid entries in those false-positive counts, the two appendices with the full citation and the checker's note, and the Figure 1 legend and gridlines. The split into collision-free batches was required by VerusCite's duplicate rule, which would otherwise have skipped entries that share a title and author list. All numbers and figures are computed from the scripts and the saved API results in the repository.
 
 # Appendix A. Valid entries that were not verified {.unnumbered}
 
@@ -335,19 +365,19 @@ A fabricated DOI is a minor error when the rest of the citation identifies the p
 
 A year off by one is a minor error for the same reason. The paper is the one cited, and the year is the field that is wrong. That rule accounts for `{python} com(diff_n(R.YEAR_DIFF))` of these valid entries. Hallmark's future-date type is a larger shift, the year set from `{python} FUTURE_YEAR_MIN` to `{python} FUTURE_YEAR_MAX`, and `{python} pct(type_rate("future date", "Minor error"))` of those entries are minor errors when the year is checked against the record.
 
-The other minor errors are author order, an author list, a given name, or a preprint title that changed between versions. Two further entries were not found. One row is Hallmark's canary string. One DOI resolves to a different title and author list.
+The other minor errors are author order, an author list, a given name, or a preprint title that changed between versions. The three not-found rows are the canary string and the two papers the search missed. The hallucination row is the DOI that resolves to a different paper. The trace is the checker's full note.
 
 ```{python}
 #| output: asis
 show = R.valid_miss_table(df)
 print(show.to_markdown(index=False))
 print()
-print(': Valid entries VerusCite did not verify. Difference is the field the checker named. {#tbl-valid-misses tbl-colwidths="[14,28,8,22,28]"}')
+print(': Valid entries VerusCite did not verify. The citation is the entry that was checked. The DOI links to the identifier and, where the checker stored a page, to that article. The trace is the checker\'s full note. {#tbl-valid-misses tbl-colwidths="[10,28,22,40]"}')
 ```
 
 # Appendix B. Verified and minor-error samples {.unnumbered}
 
-For each Hallmark type, the tables below draw up to five entries VerusCite verified and up to five it called a minor error. The draw sorts on the citation key and samples with seed `{python} R.SAMPLE_SEED`. A label with fewer than five entries contributes every row.
+For each Hallmark type, the tables below draw up to five entries VerusCite verified and up to five it called a minor error. The draw sorts on the citation key and samples with seed `{python} R.SAMPLE_SEED`. A label with fewer than five entries contributes every row. Each row is the full citation, the DOI with a link to the article when the checker stored one, and the checker's full note.
 
 ```{python}
 #| output: asis

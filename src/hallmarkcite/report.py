@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import random
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -299,7 +300,32 @@ def _one_line(value) -> str:
         .replace("|", "\\|")
         .replace("_", "\\_")
         .replace("*", "\\*")
+        .replace("@", "\\@")
     )
+
+
+def _clean(value) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ""
+    text = str(value).strip()
+    if not text or text.lower() == "nan":
+        return ""
+    return text
+
+
+# Characters that end a markdown link destination early. Encode only those.
+_MD_URL = str.maketrans({
+    " ": "%20",
+    "(": "%28",
+    ")": "%29",
+    "[": "%5B",
+    "]": "%5D",
+    "<": "%3C",
+    ">": "%3E",
+})
+
+_KEY_RE = re.compile(r"@\w+\s*\{\s*([^,\s]+)\s*,")
+_API_EXTRA: dict[str, pd.DataFrame] = {}
 
 
 def _fmt_year(value) -> str:
@@ -309,14 +335,6 @@ def _fmt_year(value) -> str:
     if not text or text.lower() == "nan":
         return ""
     return str(int(float(text)))
-
-
-def clip_text(value, n: int = 180) -> str:
-    text = _one_line(value)
-    if len(text) <= n:
-        return text
-    cut = text[: n - 1].rsplit(" ", 1)[0]
-    return cut + "…"
 
 
 def citation_difference(row: pd.Series) -> str:
@@ -358,19 +376,137 @@ def citation_difference(row: pd.Series) -> str:
     return "Same paper, small metadata difference"
 
 
-def valid_miss_table(df: pd.DataFrame) -> pd.DataFrame:
-    """Every valid entry VerusCite did not verify."""
+def api_extra(root: Path | None = None) -> pd.DataFrame:
+    """Venue and article URL from the saved API results, one row per citation key.
+
+    ``book_title`` holds the venue for almost every conference entry. The API
+    ``venue`` field is filled in for the few journal-style entries instead.
+    ``source_url`` is the page the checker stored, when it stored one.
+    """
+    root = (root or ROOT).resolve()
+    cache_key = str(root)
+    cached = _API_EXTRA.get(cache_key)
+    if cached is not None:
+        return cached
+    rows = []
+    for path in sorted((root / "results" / "api").glob("part_*.json")):
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        for citation in payload.get("citations", []):
+            if citation.get("version") not in (None, "original"):
+                continue
+            match = _KEY_RE.search(citation.get("raw_text") or "")
+            if not match:
+                continue
+            rows.append({
+                "bibtex_key": match.group(1),
+                "book_title": citation.get("book_title") or "",
+                "api_venue": citation.get("venue") or "",
+                "source_url": citation.get("source_url") or "",
+            })
+    frame = pd.DataFrame(
+        rows, columns=["bibtex_key", "book_title", "api_venue", "source_url"]
+    )
+    if frame["bibtex_key"].duplicated().any():
+        frame = frame.drop_duplicates("bibtex_key", keep="first")
+    _API_EXTRA[cache_key] = frame
+    return frame
+
+
+def _attach_api(rows: pd.DataFrame) -> pd.DataFrame:
+    extra = api_extra()
+    drop = [name for name in ("book_title", "api_venue", "source_url") if name in rows.columns]
+    base = rows.drop(columns=drop) if drop else rows
+    return base.merge(extra, on="bibtex_key", how="left")
+
+
+def _author_prose(value) -> str:
+    parts = [_one_line(part) for part in _clean(value).split(";")]
+    parts = [part for part in parts if part]
+    if not parts:
+        return ""
+    if len(parts) == 1:
+        return parts[0]
+    if len(parts) == 2:
+        return f"{parts[0]} and {parts[1]}"
+    return ", ".join(parts[:-1]) + ", and " + parts[-1]
+
+
+def format_citation(row: pd.Series) -> str:
+    """Authors, title, venue, and year of the entry that was checked."""
+    authors = _author_prose(row.get("vc_authors"))
+    title = _one_line(row.get("vc_title"))
+    venue = _one_line(row.get("book_title")) or _one_line(row.get("api_venue"))
+    year = _fmt_year(row.get("vc_year"))
+    pieces = []
+    if authors:
+        pieces.append(authors + ".")
+    if title:
+        pieces.append(title + ".")
+    if venue and year:
+        pieces.append(f"{venue}, {year}.")
+    elif venue:
+        pieces.append(venue + ".")
+    elif year:
+        pieces.append(year + ".")
+    return " ".join(pieces)
+
+
+def _md_link(label: str, url: str) -> str:
+    return f"[{label}]({url.translate(_MD_URL)})"
+
+
+def doi_cell(doi, matched, source_url) -> str:
+    """Cited DOI, a found DOI when it differs, and the stored article page."""
+    cited = _clean(doi)
+    found = _clean(matched)
+    source = _clean(source_url)
+    parts = []
+    cited_url = ""
+    if cited:
+        cited_url = "https://doi.org/" + cited
+        parts.append(_md_link(_one_line(cited), cited_url))
+    if found and found.lower() != cited.lower():
+        parts.append("Found " + _md_link(_one_line(found), "https://doi.org/" + found))
+    if source and source.rstrip("/") != cited_url.rstrip("/"):
+        parts.append(_md_link("article", source))
+    return " ".join(parts)
+
+
+def _display_frame(rows: pd.DataFrame) -> pd.DataFrame:
+    """Citation, linked DOI, and the checker's full note. Nothing is clipped."""
+    columns = ["VerusCite", "Citation", "DOI", "Trace"]
+    if rows.empty:
+        return pd.DataFrame(columns=columns)
+    attached = _attach_api(rows)
+    return pd.DataFrame({
+        "VerusCite": attached["vc_status"].map(STATUS_LABELS).to_numpy(),
+        "Citation": attached.apply(format_citation, axis=1).to_numpy(),
+        "DOI": [
+            doi_cell(doi, matched, source)
+            for doi, matched, source in zip(
+                attached["vc_doi"],
+                attached["vc_matched_doi"],
+                attached["source_url"],
+                strict=True,
+            )
+        ],
+        "Trace": attached["vc_notes"].map(_one_line).to_numpy(),
+    })
+
+
+def valid_miss_records(df: pd.DataFrame) -> pd.DataFrame:
+    """Valid entries VerusCite did not verify, with the checker's reason."""
     sub = scored(df)
     sub = sub[sub["label"].eq("VALID") & ~sub["vc_status"].eq("verified")].copy()
     sub["_ord"] = sub["vc_status"].map(_MISS_STATUS_ORDER)
     sub = sub.sort_values(["_ord", "bibtex_key"])
-    return pd.DataFrame({
-        "VerusCite": sub["vc_status"].map(STATUS_LABELS),
-        "Title": sub["vc_title"].map(_one_line),
-        "Year": sub["vc_year"].map(_fmt_year),
-        "DOI": sub["vc_doi"].map(_one_line),
-        "Difference": sub.apply(citation_difference, axis=1),
-    })
+    sub["Difference"] = sub.apply(citation_difference, axis=1)
+    return sub
+
+
+def valid_miss_table(df: pd.DataFrame) -> pd.DataFrame:
+    """Every valid entry VerusCite did not verify, for the appendix table."""
+    return _display_frame(valid_miss_records(df))
 
 
 def future_year_span(df: pd.DataFrame) -> tuple[int, int]:
@@ -419,16 +555,5 @@ def type_sample_tables(
 
 
 def sample_display(rows: pd.DataFrame) -> pd.DataFrame:
-    """Columns for an appendix sample table."""
-    if rows.empty:
-        return pd.DataFrame(
-            columns=["VerusCite", "Title", "Year", "DOI", "Matched DOI", "Note"]
-        )
-    return pd.DataFrame({
-        "VerusCite": rows["vc_status"].map(STATUS_LABELS).to_numpy(),
-        "Title": rows["vc_title"].map(_one_line).to_numpy(),
-        "Year": rows["vc_year"].map(_fmt_year).to_numpy(),
-        "DOI": rows["vc_doi"].map(_one_line).to_numpy(),
-        "Matched DOI": rows["vc_matched_doi"].map(_one_line).to_numpy(),
-        "Note": rows["vc_notes"].map(lambda text: clip_text(text, 180)).to_numpy(),
-    })
+    """Columns for an appendix sample table. The note is the full checker trace."""
+    return _display_frame(rows)
