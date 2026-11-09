@@ -46,9 +46,21 @@ The scored set is the full public release: 1,260 hallucinated entries and 812 va
 
 767 of the 812 valid entries are verified. The false calls on valid entries are 41 minor errors, 3 not found, and 1 called a hallucination. <a href="#tbl-valid-misses" class="quarto-xref">Table 6</a> lists every one of them.
 
-Of the hallucinated entries, 633 are hallucinations, 98 are not found, 327 are minor errors, and 202 are verified. The verified hallucinated entries are the ones VerusCite accepted. The minor errors are mostly the real papers Hallmark still calls hallucinations. The not found row is the miss the hallucination label does not get credit for.
+Of the hallucinated entries, 633 are hallucinations, 98 are not found, 327 are minor errors, and 202 are verified. The verified hallucinated entries are the ones VerusCite accepted. The minor errors are mostly the real papers Hallmark still calls hallucinations. The not found row is the miss the hallucination label does not get credit for. The breakdown by Hallmark type is in the recall section.
 
-<a href="#fig-types" class="quarto-xref">Figure 1</a> and <a href="#tbl-types" class="quarto-xref">Table 3</a> break the hallucinated class out by type. The types are in Hallmark’s order, tier 1 then tier 2 then tier 3.
+# False positives
+
+The false positives are the valid entries VerusCite did not verify: 41 minor errors, 3 not found, and 1 called a hallucination. <a href="#tbl-valid-misses" class="quarto-xref">Table 6</a> lists every one. Across each of those flags, Hallmark’s valid label is often the part that does not match the citation, and VerusCite’s flag does.
+
+Of the 41 minor errors, 35 have an incorrect DOI, with a version string appended. Every one of those suffixes is v1. For 33 of them, the note says the suffix does not resolve and the title, authors, and year still identify the paper, so minor error is the label that rule is written to return. Appendix A names the other minor errors. A year off by one and a given name are real differences in the benchmark entry. The other 3 are author-order calls, and I need to look at how the checker reads that field.
+
+The entry called a hallucination, “Improving Robustness using Generated Data”, lists a different DOI, 10.48550/arXiv.2104.09425. That DOI is Sehwag, Mahloujifar, Handina, Dai, Xiang, Chiang, and Mittal, “Robust Learning Meets Generative Models: Can Proxy Distributions Improve Adversarial Robustness?” The paper named in the citation is [arXiv:2110.09468](https://arxiv.org/abs/2110.09468). Hallmark marks the entry valid. The citation’s DOI is the field that is wrong. I would rather VerusCite had called this a minor error.
+
+One of the not-found entries is a fake citation planted in the file, the canary string in the stress file. Hallmark marks it valid. It is not a paper. The other 2 not-found entries are real ICLR papers the search did not return.
+
+# Recall
+
+<a href="#fig-types" class="quarto-xref">Figure 1</a> and <a href="#tbl-types" class="quarto-xref">Table 3</a> are VerusCite’s label by Hallmark type, in Hallmark’s order, tier 1 then tier 2 then tier 3.
 
 ![](paper_files/figure-commonmark/fig-types-output-1.png)
 
@@ -69,15 +81,9 @@ Of the hallucinated entries, 633 are hallucinations, 98 are not found, 327 are m
 | plausible fabrication  |    3 | 146 |        0 |           2 |        91 |            53 |
 | arxiv version mismatch |    3 | 130 |       45 |          25 |         0 |            60 |
 
-Plausible fabrications are the invented entries. Of 146 plausible fabrications, 36.3% are hallucinations and 62.3% are not found.
+The current implementation will need to be amended to better catch future dates and nonexistent venues. See Appendix B for several examples of each. Many of the other articles that appendix does not cover are intentionally flagged as minor errors, including a fabricated DOI. Hallmark’s future-date entries set the year from 2030 to 2036 on a real paper. Of those, 71.2% are minor errors, and 17 were verified by a DOI lookup whose saved note does not mention the year. Of the nonexistent-venue entries, 21 were verified and 20 are minor errors. If the only problem is a date in the future, a later version of the checker will still flag the article as a minor error.
 
-A fabricated DOI, with the rest of the citation identifying the paper, is a minor error on purpose. A year off by one is a minor error on purpose. The hallucination label is not meant to catch either one. Of the 67 fabricated DOIs, 97.0% are minor errors and 3.0% are hallucinations. Hallmark’s future-date entries set the year from 2030 to 2036 on a real paper. Of those, 71.2% are minor errors. The other 17 were verified by a DOI lookup, and the saved note does not mention the year. Appendix A is where those two rules show up on entries Hallmark marks valid.
-
-Wrong venue and a partial author list keep a real paper and change one field. Of the wrong-venue entries, 28.9% are minor errors and 44.6% are hallucinations. Of the partial author lists, 59.8% are minor errors. Calling only the hallucination label a detection misses that block on purpose.
-
-Near-miss titles sit in between. 52.2% are minor errors and 16.3% are hallucinations. A one or two word change in the title is the case VerusCite’s minor-error rule is written for, and it is also a Hallmark hallucination.
-
-# Recall and false positives
+A fabricated DOI, with the rest of the citation identifying the paper, is one of those intentional minor errors. Of the 67 fabricated DOIs, 97.0% are minor errors and 3.0% are hallucinations. The hallucination label is not meant to catch that case. Wrong venue and a partial author list keep a real paper and change one field. Of the wrong-venue entries, 28.9% are minor errors and 44.6% are hallucinations. Of the partial author lists, 59.8% are minor errors. Near-miss titles sit in between. 52.2% are minor errors and 16.3% are hallucinations. Plausible fabrications are the invented entries. Of 146 plausible fabrications, 36.3% are hallucinations and 62.3% are not found.
 
 I score three rules. The strict rule counts only VerusCite’s hallucination label as a detection. The second counts hallucination or not found, which is the strict rule plus the lookups that did not return a paper. The third counts anything other than verified, so a minor error is also a detection. Recall is the share of Hallmark’s hallucinated entries that the rule flags. The false positive rate is the share of valid entries that it flags. <a href="#tbl-rates" class="quarto-xref">Table 4</a> has both, with the counts.
 
@@ -87,13 +93,11 @@ I score three rules. The strict rule counts only VerusCite’s hallucination lab
 | Hallucination or not found | 731 / 1,260   | 58.0%  | 4 / 812         | 0.5% |
 | Anything but verified      | 1,058 / 1,260 | 84.0%  | 45 / 812        | 5.5% |
 
-The hallucination label catches 633 of 1,260 hallucinated entries, recall 50.2%, and it flags 1 of 812 valid entries, a false positive rate of 0.1%.
+The hallucination label catches 633 of 1,260 hallucinated entries, recall 50.2%, and it flags 1 of 812 valid entries, a false positive rate of 0.1%. The false-positive section is where that one valid entry is discussed.
 
-That valid entry is Gowal and coauthors, “Improving Robustness using Generated Data”, 2021, with DOI 10.48550/arXiv.2104.09425. The DOI resolves to a different paper: Sehwag, Mahloujifar, Handina, Dai, Xiang, Chiang, and Mittal, “Robust Learning Meets Generative Models: Can Proxy Distributions Improve Adversarial Robustness?” The paper named in the citation is [arXiv:2110.09468](https://arxiv.org/abs/2110.09468). The checker called it a hallucination because the identifier resolves and the title and authors do not match the record it opens. Hallmark marks the entry valid. Its explanation says the DOI was flagged as non-resolving, and that arXiv DOIs resolve. This DOI does resolve. It resolves to the Sehwag paper. The row is in the false-positive count because Hallmark’s label is valid. The citation pairs one paper’s title and authors with another paper’s DOI.
+Counting not found with hallucination raises recall to 58.0% (731 of 1,260) and raises the false positive rate to 0.5% (4 of 812). The extra true positives are the 98 hallucinated entries labeled not found. The extra false positives are the 3 valid entries with the same label.
 
-Counting not found with hallucination raises recall to 58.0% (731 of 1,260) and raises the false positive rate to 0.5% (4 of 812). The extra true positives are the 98 hallucinated entries labeled not found. The extra false positives are the 3 valid entries with the same label. One of them is Hallmark’s canary string, a contamination marker in the stress file, with no paper behind it. The other two are real ICLR papers the search did not return: Wang and coauthors, “On Fast Adversarial Robustness Adaptation in Model-Agnostic Meta-Learning”, 2021 ([arXiv:2102.10454](https://arxiv.org/abs/2102.10454)), and Zhang and coauthors, “Real-Time Image Demoiréing on Mobile Devices”, 2023 ([arXiv:2302.02184](https://arxiv.org/abs/2302.02184)). Those two are the misses. Not found is doing both jobs: it holds missed hallucinations, and it holds real papers the search did not return.
-
-Counting minor errors as well raises recall to 84.0% and the false positive rate to 5.5%. That rule flags every entry VerusCite did not fully accept. Most of the recall it adds, relative to the not-found rule, is the real-paper types. Of the 45 valid entries it flags, 35 have a DOI that ends in a version suffix. Appendix A separates those from the year error, the given-name error, and the author-order calls.
+Counting minor errors as well raises recall to 84.0% and the false positive rate to 5.5%. That rule flags every entry VerusCite did not fully accept. Most of the recall it adds, relative to the not-found rule, is the real-paper types, which the minor-error rule is written to hold.
 
 Hallmark’s published table is on the dev file alone: a DOI lookup at detection rate 0.218 and false positive rate 0.043, Gemini 2.5 Pro at 0.476 and 0.050, and bibtex-updater, which they treat as a co-designed upper bound, at 0.820 and 0.051 when abstentions are scored as valid ([Kim, Brendel, and Reizinger 2026](#ref-kim2026hallmark)). The rates above are the full public set. Their detection rate also credits a wrong venue, which VerusCite’s hallucination label does not.
 
@@ -138,11 +142,11 @@ Hallmark has not settled whether a real paper with the wrong venue is a hallucin
 
 # AI use disclosure
 
-The code, the API run, and the text were produced with Grok (xAI, Grok 4.7) under my direction. I specified the benchmark, the use of the VerusCite API, the crosstab of VerusCite’s labels with Hallmark’s, the recall and false positive rate, the AUC, the worked examples for how that ROC score is built, the walk-through of the valid entries in those false-positive counts, the two appendices with the full citation and the checker’s note, the count of version-suffixed DOIs among those valid misses, and the Figure 1 legend and gridlines. The split into collision-free batches was required by VerusCite’s duplicate rule, which would otherwise have skipped entries that share a title and author list. All numbers and figures are computed from the scripts and the saved API results in the repository.
+The code, the API run, and the text were produced with Grok (xAI, Grok 4.7) under my direction. I specified the benchmark, the use of the VerusCite API, the crosstab of VerusCite’s labels with Hallmark’s, separate sections for the false positives and for recall, the AUC, the worked examples for how that ROC score is built, the walk-through of the valid entries in those false-positive counts, the two appendices with the full citation and the checker’s note, the count of version-suffixed DOIs among those valid misses, and the Figure 1 legend and gridlines. The split into collision-free batches was required by VerusCite’s duplicate rule, which would otherwise have skipped entries that share a title and author list. All numbers and figures are computed from the scripts and the saved API results in the repository.
 
 # Appendix A. Valid entries that were not verified
 
-Hallmark marks the entries in <a href="#tbl-valid-misses" class="quarto-xref">Table 6</a> valid. VerusCite did not verify them: 41 minor errors, 3 not found, and 1 called a hallucination.
+The false-positive section is the reading of these rows. Hallmark marks the entries in <a href="#tbl-valid-misses" class="quarto-xref">Table 6</a> valid. VerusCite did not verify them: 41 minor errors, 3 not found, and 1 called a hallucination.
 
 A fabricated DOI is a minor error when the rest of the citation identifies the paper. I wrote that rule so a bad identifier would be a field to fix, and the paper would still count as found. An unresolved DOI is the same call. Of the 45 entries in this table, 35 append a version number to the DOI. Every one of those suffixes is v1. For 33 of them, the note says the suffix does not resolve and the title, authors, and year match the preprint. The other 2 still end in that suffix, and the note names another field. “Capability-Oriented Training Induced Alignment Risk” is a preprint title that changed between versions. “Query-focused and Memory-aware Reranker for Long Context Processing” is an author list: the citation matches the v1 author list, including Weiping Wang, and the note compares it with a later list.
 
